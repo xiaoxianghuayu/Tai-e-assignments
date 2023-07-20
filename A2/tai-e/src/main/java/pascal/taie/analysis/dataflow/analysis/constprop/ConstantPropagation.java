@@ -122,9 +122,8 @@ public class ConstantPropagation extends
 //                        newOut.copyFrom(in);
 //                    }
                 }
-            } else {
-                // function declaration, return, control instruction(if)
             }
+            // function declaration, return, control instruction(if)
         }
 
         if(!newOut.equals(out)) {
@@ -221,6 +220,9 @@ public class ConstantPropagation extends
                 }
             } else if (value1.isNAC() || value2.isNAC()) {
                 value = Value.getNAC();
+                if (value1.isNAC() && !value2.isNAC() && value2.getConstant() == 0 && (op.toString() == "/" || op.toString() == "%")) {
+                    value = Value.getUndef();
+                }
             } else {
                 value = Value.getUndef();
             }
