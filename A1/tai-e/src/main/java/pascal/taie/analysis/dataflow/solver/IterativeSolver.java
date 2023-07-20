@@ -50,10 +50,13 @@ class IterativeSolver<Node, Fact> extends Solver<Node, Fact> {
                 // Node node = (Node) cfg.getNodes().toArray()[i];
             for(Node node: cfg) {
                 if(node != cfg.getExit()) {
+                    // CONTROL FLOW part
                     for(Node succNode: cfg.getSuccsOf(node)) {
                         lva.meetInto(result.getInFact(succNode), result.getOutFact(node));
                     }
 
+                    // TRANSFER FUNCTION part
+                    // finish parse the new defined var and the used var of the basic block(i.e. Node node)
                     anyChange |= lva.transferNode(node, result.getInFact(node), result.getOutFact(node));   // loop need |=
                 }
             }

@@ -11,7 +11,7 @@ class SimpleBinary {
         boolean z = x == y;
         return z;
     }
-    
+
     int shift() {
         int x = 1, y = 2;
         int z = x << y;
