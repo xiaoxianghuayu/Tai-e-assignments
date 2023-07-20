@@ -51,7 +51,9 @@ public class ConstantPropagation extends
         // TODO - finish me
         CPFact boundaryFact = new CPFact();
         for(Var param: cfg.getIR().getParams()) {   // cfg.getIR return `DefaultIR` of <SimpleBinary: int nac(int)>, i.e. the whole function information
-            boundaryFact.update(param, Value.getNAC());
+            if(canHoldInt(param)) {
+                boundaryFact.update(param, Value.getNAC());
+            }
         }
         return boundaryFact;
     }
@@ -111,16 +113,6 @@ public class ConstantPropagation extends
 
                 if(canHoldInt(leftValue)) {                 // the var can not hold int will always be the init value: Value.getNAC()
                     newOut.update(leftValue, rightValue);   // update includes add and remove
-                } else {
-                    // handle invoke and load: just give a NAC
-//                    if (leftValue.getLoadArrays().size() > 0 || leftValue.getLoadFields().size() > 0 || leftValue.getInvokes().size() > 0) {
-//                        newOut.update(leftValue, Value.getNAC());
-//                    }
-                    // handle store: do nothing, make OUT[B] = IN[B]
-//                    if (leftValue.getStoreArrays().size() > 0 || leftValue.getStoreFields().size() > 0) {
-//                        newOut.clear();
-//                        newOut.copyFrom(in);
-//                    }
                 }
             }
             // function declaration, return, control instruction(if)
