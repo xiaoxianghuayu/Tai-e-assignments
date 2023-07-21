@@ -1,0 +1,47 @@
+-------------------- <ForLoops: void dead1()> (livevar) --------------------
+[0@L4] m = 0; [%this, m]
+[1@L5] y = 2; [%this, m, y]
+[2@L6] i = 0; [%this, i, m, y]
+[3@L6] nop; [%this, i, m, y]
+[4@L6] if (i < m) goto 6; [%this, y]
+[5@L6] goto 13; [%this, y]
+[6@L6] nop; [%this, y]
+[7@L7] invokevirtual %this.<ForLoops: void use(int)>(y); []
+[8@L8] return; []
+[9@L8] nop; [%this, i, m, y]
+[10@L6] %intconst0 = 1; [%intconst0, %this, i, m, y]
+[11@L6] i = i + %intconst0; [%this, i, m, y]
+[12@L6] goto 3; [%this, i, m, y]
+[13@L6] nop; [%this, y]
+[14@L10] invokevirtual %this.<ForLoops: void use(int)>(y); []
+[15@L10] return; []
+
+-------------------- <ForLoops: void dead1()> (constprop) --------------------
+[0@L4] m = 0; {m=0}
+[1@L5] y = 2; {m=0, y=2}
+[2@L6] i = 0; {i=0, m=0, y=2}
+[3@L6] nop; {%intconst0=1, i=0, m=0, y=2}
+[4@L6] if (i < m) goto 6; {%intconst0=1, i=0, m=0, y=2}
+[5@L6] goto 13; {%intconst0=1, i=0, m=0, y=2}
+[6@L6] nop; {%intconst0=1, i=0, m=0, y=2}
+[7@L7] invokevirtual %this.<ForLoops: void use(int)>(y); {%intconst0=1, i=0, m=0, y=2}
+[8@L8] return; {%intconst0=1, i=0, m=0, y=2}
+[9@L8] nop; {}
+[10@L6] %intconst0 = 1; {%intconst0=1}
+[11@L6] i = i + %intconst0; {%intconst0=1}
+[12@L6] goto 3; {%intconst0=1}
+[13@L6] nop; {%intconst0=1, i=0, m=0, y=2}
+[14@L10] invokevirtual %this.<ForLoops: void use(int)>(y); {%intconst0=1, i=0, m=0, y=2}
+[15@L10] return; {%intconst0=1, i=0, m=0, y=2}
+
+-------------------- <ForLoops: void dead1()> (deadcode) --------------------
+
+[6@L6] nop;
+[7@L7] invokevirtual %this.<ForLoops: void use(int)>(y);
+[8@L8] return;
+[9@L8] nop;
+[10@L6] %intconst0 = 1;
+[11@L6] i = i + %intconst0;
+[12@L6] goto 3;
+
+-------------------------------------------------

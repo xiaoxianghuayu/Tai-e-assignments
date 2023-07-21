@@ -78,32 +78,21 @@ public abstract class Solver<Node, Fact> {
 
     protected void initializeForward(CFG<Node> cfg, DataflowResult<Node, Fact> result) {
         // TODO - finish me
-        DataflowAnalysis<Node, Fact> analysisInstance = analysis;
+        DataflowAnalysis<Node, Fact> cpa = analysis;
 
-        result.setInFact(cfg.getEntry(), analysisInstance.newBoundaryFact(cfg));
-        result.setOutFact(cfg.getEntry(), analysisInstance.newBoundaryFact(cfg));
+        result.setInFact(cfg.getEntry(), cpa.newBoundaryFact(cfg));
+        result.setOutFact(cfg.getEntry(), cpa.newBoundaryFact(cfg));
 
         for (Node node : cfg) {
             if(node != cfg.getEntry()) {
-                result.setInFact(node, analysisInstance.newInitialFact());
-                result.setOutFact(node, analysisInstance.newInitialFact());
+                result.setInFact(node, cpa.newInitialFact());
+                result.setOutFact(node, cpa.newInitialFact());
             }
         }
     }
 
     protected void initializeBackward(CFG<Node> cfg, DataflowResult<Node, Fact> result) {
-        // TODO - finish me
-        DataflowAnalysis<Node, Fact> analysisInstance = analysis;
-
-        result.setInFact(cfg.getExit(), analysisInstance.newBoundaryFact(cfg));
-        result.setOutFact(cfg.getEntry(), analysisInstance.newBoundaryFact(cfg));
-
-        for (Node node : cfg) {
-            if(node != cfg.getExit()) {
-                result.setInFact(node, analysisInstance.newInitialFact());
-                result.setOutFact(node, analysisInstance.newInitialFact());
-            }
-        }
+        throw new UnsupportedOperationException();
     }
 
     /**

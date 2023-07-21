@@ -28,6 +28,8 @@ import pascal.taie.analysis.graph.cfg.CFG;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+
 class WorkListSolver<Node, Fact> extends Solver<Node, Fact> {
 
     WorkListSolver(DataflowAnalysis<Node, Fact> analysis) {
@@ -37,7 +39,7 @@ class WorkListSolver<Node, Fact> extends Solver<Node, Fact> {
     @Override
     protected void doSolveForward(CFG<Node> cfg, DataflowResult<Node, Fact> result) {
         // TODO - finish me
-        DataflowAnalysis<Node, Fact> analysisInstance = analysis;
+        DataflowAnalysis<Node, Fact> cpa = analysis;
 
         List<Node> workList = new ArrayList<>();
         for (Node node : cfg.getNodes()) {      // cfg.getNodes() will return all statements of a function
@@ -48,52 +50,28 @@ class WorkListSolver<Node, Fact> extends Solver<Node, Fact> {
 
         while(workList.size() > 0) {
             Node node = workList.get(0);
-            Fact newIn = analysisInstance.newInitialFact();
+            Fact newIn = cpa.newInitialFact();
 
             for(Node preNode: cfg.getPredsOf(node)) {
                 // newIn could be replaced by `result.getInFact(preNode)`, the original var,
                 // because in `IN[B] = U OUT[P]`, the OUT[P] is monotonically increasing, so even the newIn is not empty,
                 // the old value is must smaller than the new value, so it is no problem.
-                analysisInstance.meetInto(result.getOutFact(preNode), newIn);
+                cpa.meetInto(result.getOutFact(preNode), newIn);
             }
             result.setInFact(node, newIn);
 
-            boolean anyChange = analysisInstance.transferNode(node, result.getInFact(node), result.getOutFact(node));
+            boolean anyChange = cpa.transferNode(node, result.getInFact(node), result.getOutFact(node));
             if(anyChange) {
                 workList.addAll(cfg.getSuccsOf(node));
             }
 
             workList.remove(node);
         }
+//        System.out.println("1111");
     }
 
     @Override
     protected void doSolveBackward(CFG<Node> cfg, DataflowResult<Node, Fact> result) {
-        // TODO - finish me
-        DataflowAnalysis<Node, Fact> analysisInstance = analysis;
-
-        List<Node> workList = new ArrayList<>();
-        for (Node node : cfg.getNodes()) {      // cfg.getNodes() will return all statements of a function
-            if(!(cfg.isEntry(node) || cfg.isExit(node))) {
-                workList.add(node);
-            }
-        }
-
-        while(workList.size() > 0) {
-            Node node = workList.get(0);
-            Fact newOut = analysisInstance.newInitialFact();
-
-            for(Node preNode: cfg.getSuccsOf(node)) {
-                analysisInstance.meetInto(result.getInFact(preNode), newOut);
-            }
-            result.setOutFact(node, newOut);
-
-            boolean anyChange = analysisInstance.transferNode(node, result.getInFact(node), result.getOutFact(node));
-            if(anyChange) {
-                workList.addAll(cfg.getPredsOf(node));
-            }
-
-            workList.remove(node);
-        }
+        throw new UnsupportedOperationException();
     }
 }
