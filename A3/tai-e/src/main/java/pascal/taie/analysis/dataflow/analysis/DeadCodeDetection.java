@@ -62,26 +62,44 @@ public class DeadCodeDetection extends MethodAnalysis {
         // TODO - finish me
         // Your task is to recognize dead code in ir and add it to deadCode
 
-        boolean unreachable = false;
-        for (Stmt stm: cfg.getNodes()) {
-            if (cfg.isEntry(stm) || cfg.isExit(stm)) {
+        Set<Stmt> reachableCode = new TreeSet<>(Comparator.comparing(Stmt::getIndex));
+        List<Stmt> stmtList = new ArrayList<>();
+
+        stmtList.add(cfg.getEntry());
+        while (stmtList.size() > 0) {
+            Stmt curStmt = stmtList.get(0);
+            stmtList.remove(curStmt);
+            if (reachableCode.contains(curStmt)) {
                 continue;
             }
-            // Add unreachable code
-            if (unreachable) {
-                deadCode.add(stm);
-                continue;
+            reachableCode.add(curStmt);
+
+            // dead assignment explicit
+            Optional<LValue> left = curStmt.getDef();
+            if(!left.isEmpty()) {
+                LValue lValue = left.get();
+                if (!liveVars.getOutFact(curStmt).contains((Var) lValue)) { // not live var
+                    RValue rValue = curStmt.getUses().get(curStmt.getUses().size() - 1);
+                    if (hasNoSideEffect(rValue)) {     // this stm has no side effect, mark it as unreachable
+                        reachableCode.remove(curStmt);
+                    }
+                }
             }
 
-            // handle unreachable branch
-            if (stm instanceof If) {
-                ConditionExp conditionExp = ((If) stm).getCondition();
-                Value conditionExpResult = ConstantPropagation.evaluate(conditionExp, constants.getInFact(stm));
-                // if the condition is fixed
-                if (conditionExpResult.isConstant()) {
+            // select next edge
+            // CAUGHT_EXCEPTION  UNCAUGHT_EXCEPTION
+            Set<Edge<Stmt>> nextEdges = cfg.getOutEdgesOf(curStmt);
+            // only one out edge: FALL_THROUGH, GOTO, ENTRY
+            if (nextEdges.size() == 1) {
+                Stmt target = nextEdges.iterator().next().getTarget();
+                stmtList.add(target);
+            } else {
+                // just 0 edge: RETURN
+                // more than one edge: IF_TRUE/IF_FALSE, SWITCH_CASE/SWITCH_DEFAULT
+                if (curStmt instanceof If) {
                     Edge<Stmt> trueEdge = null;
                     Edge<Stmt> falseEdge = null;
-                    for (Edge <Stmt> tmpStmt: cfg.getOutEdgesOf(stm)) {
+                    for (Edge <Stmt> tmpStmt: nextEdges) {
                         if (tmpStmt.getKind() == Edge.Kind.IF_TRUE) {
                             trueEdge = tmpStmt;
                         } else if (tmpStmt.getKind() == Edge.Kind.IF_FALSE) {
@@ -89,137 +107,214 @@ public class DeadCodeDetection extends MethodAnalysis {
                         }
                     }
 
-                    int realValue = conditionExpResult.getConstant();
-                    Stmt firstTarget = realValue > 0 ? falseEdge.getTarget() : trueEdge.getTarget();
-                    Stmt auxiliaryTarget = realValue > 0 ? trueEdge.getTarget() : falseEdge.getTarget();
-
-                    List<Stmt> auxiliaryWorkList = new ArrayList<>();
-                    auxiliaryWorkList.add(auxiliaryTarget);
-                    int auxliaryCount = 0;
-                    while(auxliaryCount < auxiliaryWorkList.size()) {
-                        Stmt currentStmt = auxiliaryWorkList.get(auxliaryCount);
-                        auxliaryCount += 1;
-
-                        for (Edge<Stmt> nextEdge : cfg.getOutEdgesOf(currentStmt)) {
-                            if (nextEdge.getKind() == Edge.Kind.ENTRY || nextEdge.getKind() == Edge.Kind.RETURN) {
-                                continue;
-                            }
-                            Stmt nextStmt = nextEdge.getTarget();
-
-                            if (!auxiliaryWorkList.contains(nextStmt)) {
-                                auxiliaryWorkList.add(nextStmt);
-                            }
-                        }
-                    }
-
-                    List<Stmt> workList = new ArrayList<>();
-                    workList.add(firstTarget);
-                    deadCode.add(firstTarget);
-                    while(workList.size() > 0) {
-                        Stmt currentStmt = workList.get(0);
-                        workList.remove(currentStmt);
-                        if (!auxiliaryWorkList.contains(currentStmt)) {
-                            deadCode.add(currentStmt);
-                        }
-                        for (Edge<Stmt> nextEdge: cfg.getOutEdgesOf(currentStmt)) {
-                            if (nextEdge.getKind() == Edge.Kind.ENTRY || nextEdge.getKind() == Edge.Kind.RETURN) {
-                                continue;
-                            }
-                            if (nextEdge.getKind() == Edge.Kind.GOTO) {
-                                break;
-                            }
-                            Stmt nextStmt = nextEdge.getTarget();
-
-                            workList.add(nextStmt);
-                        }
-                    }
-                }
-            } else if (stm instanceof SwitchStmt) {
-                Var switchVar = ((SwitchStmt) stm).getVar();
-                Value switchValue = constants.getInFact(stm).get(switchVar);
-                if (switchValue.isConstant()) {
-                    int realValue = switchValue.getConstant();
-                    boolean hit = false;
-                    // test each case whether hit the target const value, if not, delete it
-                    for(int i = 0; i < ((SwitchStmt) stm).getCaseValues().size(); i++) {
-                        int caseValue = ((SwitchStmt) stm).getCaseValues().get(i);
-                        if (caseValue != realValue) {
-                            Pair<Integer, Stmt> caseTarget = ((SwitchStmt) stm).getCaseTargets().get(i);
-
-                            Stmt firstTarget = caseTarget.second();
-                            List<Stmt> workList = new ArrayList<>();
-                            workList.add(firstTarget);
-                            deadCode.add(firstTarget);
-                            while(workList.size() > 0) {
-                                Stmt currentStmt = workList.get(0);
-                                workList.remove(currentStmt);
-                                deadCode.add(currentStmt);
-                                for (Edge<Stmt> nextEdge: cfg.getOutEdgesOf(currentStmt)) {
-                                    if (nextEdge.getKind() == Edge.Kind.ENTRY || nextEdge.getKind() == Edge.Kind.RETURN) {
-                                        continue;
-                                    }
-                                    if (nextEdge.getKind() == Edge.Kind.GOTO) {
-                                        break;
-                                    }
-                                    Stmt nextStmt = nextEdge.getTarget();
-                                    workList.add(nextStmt);
-                                }
-                            }
+                    ConditionExp conditionExp = ((If) curStmt).getCondition();
+                    Value conditionExpResult = ConstantPropagation.evaluate(conditionExp, constants.getInFact(curStmt));
+                    // if the condition is fixed
+                    if (conditionExpResult.isConstant()) {
+                        int realValue = conditionExpResult.getConstant();
+                        if (realValue > 0) {
+                            stmtList.add(trueEdge.getTarget());
                         } else {
-                            hit = true;
+                            stmtList.add(falseEdge.getTarget());
                         }
-
-                        // if hit, delete the default part. (what if there are no break in case clause.
-                        if (hit) {
-                            Stmt firstTarget = ((SwitchStmt) stm).getDefaultTarget();
-                            List<Stmt> workList = new ArrayList<>();
-                            workList.add(firstTarget);
-                            deadCode.add(firstTarget);
-                            while(workList.size() > 0) {
-                                Stmt currentStmt = workList.get(0);
-                                workList.remove(currentStmt);
-                                deadCode.add(currentStmt);
-                                for (Edge<Stmt> nextEdge: cfg.getOutEdgesOf(currentStmt)) {
-                                    if (nextEdge.getKind() == Edge.Kind.ENTRY || nextEdge.getKind() == Edge.Kind.RETURN) {
-                                        continue;
-                                    }
-                                    if (nextEdge.getKind() == Edge.Kind.GOTO) {
-                                        // just a test
-                                        deadCode.add(cfg.getNodes().stream().toList().get(cfg.getNodes().stream().toList().indexOf(currentStmt) + 1));
-                                        break;
-                                    }
-                                    Stmt nextStmt = nextEdge.getTarget();
-                                    workList.add(nextStmt);
-                                }
+                    } else {
+                        stmtList.add(trueEdge.getTarget());
+                        stmtList.add(falseEdge.getTarget());
+                    }
+                } else if(curStmt instanceof SwitchStmt) {
+                    Var switchVar = ((SwitchStmt) curStmt).getVar();
+                    Value switchValue = constants.getInFact(curStmt).get(switchVar);
+                    if (switchValue.isConstant()) {
+                        int realValue = switchValue.getConstant();
+                        boolean hit = false;
+                        // test each case whether hit the target const value
+                        for (int i = 0; i < ((SwitchStmt) curStmt).getCaseValues().size(); i++) {
+                            int caseValue = ((SwitchStmt) curStmt).getCaseValues().get(i);
+                            if (caseValue == realValue) {
+                                hit = true;
+                                Pair<Integer, Stmt> caseTarget = ((SwitchStmt) curStmt).getCaseTargets().get(i);
+                                stmtList.add(caseTarget.second());
                             }
                         }
+                        if (!hit) {
+                            stmtList.add(((SwitchStmt) curStmt).getDefaultTarget());
+                        }
+                    } else {
+                        for (int i = 0; i < ((SwitchStmt) curStmt).getCaseValues().size(); i++) {
+                            Pair<Integer, Stmt> caseTarget = ((SwitchStmt) curStmt).getCaseTargets().get(i);
+                            stmtList.add(caseTarget.second());
+                        }
                     }
-
+                } else {
+                    int a = 111;
                 }
-                int deadbeef = 0;
-            }
-
-            // Add dead variable
-            Optional<LValue> left = stm.getDef();
-            if(!left.isEmpty()) {
-                LValue lValue = left.get();
-                if (!liveVars.getOutFact(stm).contains((Var) lValue)) { // not live var
-                    RValue rValue = stm.getUses().get(stm.getUses().size() - 1);
-                    if (hasNoSideEffect(rValue)) {
-                        deadCode.add(stm);
-                        continue;
-                    }
-                }
-            }
-
-            if (stm instanceof Return) {
-                unreachable = true;
             }
         }
 
 
+        for(Stmt tmpStmt: cfg.getNodes()) {
+            if (tmpStmt == cfg.getEntry() || tmpStmt == cfg.getExit()) {
+                continue;
+            }
+            if (!reachableCode.contains(tmpStmt)) {
+                deadCode.add(tmpStmt);
+            }
+        }
 
         return deadCode;
+
+//        boolean unreachable = false;
+//        for (Stmt stm: cfg.getNodes()) {
+//            if (cfg.isEntry(stm) || cfg.isExit(stm)) {
+//                continue;
+//            }
+//            // Add unreachable code
+//            if (unreachable) {
+//                deadCode.add(stm);
+//                continue;
+//            }
+//
+//            // handle unreachable branch
+//            if (stm instanceof If) {
+//                ConditionExp conditionExp = ((If) stm).getCondition();
+//                Value conditionExpResult = ConstantPropagation.evaluate(conditionExp, constants.getInFact(stm));
+//                // if the condition is fixed
+//                if (conditionExpResult.isConstant()) {
+//                    Edge<Stmt> trueEdge = null;
+//                    Edge<Stmt> falseEdge = null;
+//                    for (Edge <Stmt> tmpStmt: cfg.getOutEdgesOf(stm)) {
+//                        if (tmpStmt.getKind() == Edge.Kind.IF_TRUE) {
+//                            trueEdge = tmpStmt;
+//                        } else if (tmpStmt.getKind() == Edge.Kind.IF_FALSE) {
+//                            falseEdge = tmpStmt;
+//                        }
+//                    }
+//
+//                    int realValue = conditionExpResult.getConstant();
+//                    Stmt firstTarget = realValue > 0 ? falseEdge.getTarget() : trueEdge.getTarget();
+//                    Stmt auxiliaryTarget = realValue > 0 ? trueEdge.getTarget() : falseEdge.getTarget();
+//
+//                    List<Stmt> auxiliaryWorkList = new ArrayList<>();
+//                    auxiliaryWorkList.add(auxiliaryTarget);
+//                    int auxliaryCount = 0;
+//                    while(auxliaryCount < auxiliaryWorkList.size()) {
+//                        Stmt currentStmt = auxiliaryWorkList.get(auxliaryCount);
+//                        auxliaryCount += 1;
+//
+//                        for (Edge<Stmt> nextEdge : cfg.getOutEdgesOf(currentStmt)) {
+//                            if (nextEdge.getKind() == Edge.Kind.ENTRY || nextEdge.getKind() == Edge.Kind.RETURN) {
+//                                continue;
+//                            }
+//                            Stmt nextStmt = nextEdge.getTarget();
+//
+//                            if (!auxiliaryWorkList.contains(nextStmt)) {
+//                                auxiliaryWorkList.add(nextStmt);
+//                            }
+//                        }
+//                    }
+//
+//                    List<Stmt> workList = new ArrayList<>();
+//                    workList.add(firstTarget);
+//                    deadCode.add(firstTarget);
+//                    while(workList.size() > 0) {
+//                        Stmt currentStmt = workList.get(0);
+//                        workList.remove(currentStmt);
+//                        if (!auxiliaryWorkList.contains(currentStmt)) {
+//                            deadCode.add(currentStmt);
+//                        }
+//                        for (Edge<Stmt> nextEdge: cfg.getOutEdgesOf(currentStmt)) {
+//                            if (nextEdge.getKind() == Edge.Kind.ENTRY || nextEdge.getKind() == Edge.Kind.RETURN) {
+//                                continue;
+//                            }
+//                            Stmt nextStmt = nextEdge.getTarget();
+//
+//                            workList.add(nextStmt);
+//                        }
+//                    }
+//                }
+//            } else if (stm instanceof SwitchStmt) {
+//                Var switchVar = ((SwitchStmt) stm).getVar();
+//                Value switchValue = constants.getInFact(stm).get(switchVar);
+//                if (switchValue.isConstant()) {
+//                    int realValue = switchValue.getConstant();
+//                    boolean hit = false;
+//                    // test each case whether hit the target const value, if not, delete it
+//                    for(int i = 0; i < ((SwitchStmt) stm).getCaseValues().size(); i++) {
+//                        int caseValue = ((SwitchStmt) stm).getCaseValues().get(i);
+//                        if (caseValue != realValue) {
+//                            Pair<Integer, Stmt> caseTarget = ((SwitchStmt) stm).getCaseTargets().get(i);
+//
+//                            Stmt firstTarget = caseTarget.second();
+//                            List<Stmt> workList = new ArrayList<>();
+//                            workList.add(firstTarget);
+//                            deadCode.add(firstTarget);
+//                            while(workList.size() > 0) {
+//                                Stmt currentStmt = workList.get(0);
+//                                workList.remove(currentStmt);
+//                                deadCode.add(currentStmt);
+//                                for (Edge<Stmt> nextEdge: cfg.getOutEdgesOf(currentStmt)) {
+//                                    if (nextEdge.getKind() == Edge.Kind.ENTRY || nextEdge.getKind() == Edge.Kind.RETURN) {
+//                                        continue;
+//                                    }
+//                                    if (nextEdge.getKind() == Edge.Kind.GOTO) {
+//                                        break;
+//                                    }
+//                                    Stmt nextStmt = nextEdge.getTarget();
+//                                    workList.add(nextStmt);
+//                                }
+//                            }
+//                        } else {
+//                            hit = true;
+//                        }
+//
+//                        // if hit, delete the default part. (what if there are no break in case clause.
+//                        if (hit) {
+//                            Stmt firstTarget = ((SwitchStmt) stm).getDefaultTarget();
+//                            List<Stmt> workList = new ArrayList<>();
+//                            workList.add(firstTarget);
+//                            deadCode.add(firstTarget);
+//                            while(workList.size() > 0) {
+//                                Stmt currentStmt = workList.get(0);
+//                                workList.remove(currentStmt);
+//                                deadCode.add(currentStmt);
+//                                for (Edge<Stmt> nextEdge: cfg.getOutEdgesOf(currentStmt)) {
+//                                    if (nextEdge.getKind() == Edge.Kind.ENTRY || nextEdge.getKind() == Edge.Kind.RETURN) {
+//                                        continue;
+//                                    }
+//                                    if (nextEdge.getKind() == Edge.Kind.GOTO) {
+//                                        // just a test
+//                                        deadCode.add(cfg.getNodes().stream().toList().get(cfg.getNodes().stream().toList().indexOf(currentStmt) + 1));
+//                                        break;
+//                                    }
+//                                    Stmt nextStmt = nextEdge.getTarget();
+//                                    workList.add(nextStmt);
+//                                }
+//                            }
+//                        }
+//                    }
+//
+//                }
+//                int deadbeef = 0;
+//            }
+//
+//            // Add dead variable
+//            Optional<LValue> left = stm.getDef();
+//            if(!left.isEmpty()) {
+//                LValue lValue = left.get();
+//                if (!liveVars.getOutFact(stm).contains((Var) lValue)) { // not live var
+//                    RValue rValue = stm.getUses().get(stm.getUses().size() - 1);
+//                    if (hasNoSideEffect(rValue)) {
+//                        deadCode.add(stm);
+//                        continue;
+//                    }
+//                }
+//            }
+//
+//            if (stm instanceof Return) {
+//                unreachable = true;
+//            }
+//        }
+
     }
 
     /**
