@@ -105,7 +105,7 @@ public class ConstantPropagation extends
         if(stmt.getUses().size() == 0) {
             // control instruction, ignore
         } else {
-            if(!stmt.getDef().isEmpty()) {
+            if(!stmt.getDef().isEmpty() && stmt.getDef().get() instanceof Var) {
                 Exp rightExp = stmt.getUses().get(stmt.getUses().size() - 1);
                 Value rightValue = evaluate(rightExp, in);
 
