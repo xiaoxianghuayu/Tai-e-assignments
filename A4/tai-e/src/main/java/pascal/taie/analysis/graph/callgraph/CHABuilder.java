@@ -22,6 +22,7 @@
 
 package pascal.taie.analysis.graph.callgraph;
 
+import org.jf.dexlib2.dexbacked.raw.CallSiteIdItem;
 import pascal.taie.World;
 import pascal.taie.ir.proginfo.MethodRef;
 import pascal.taie.ir.stmt.Invoke;
@@ -30,9 +31,8 @@ import pascal.taie.language.classes.JClass;
 import pascal.taie.language.classes.JMethod;
 import pascal.taie.language.classes.Subsignature;
 
-import java.util.ArrayDeque;
-import java.util.Queue;
-import java.util.Set;
+import java.util.*;
+import java.util.stream.Stream;
 
 /**
  * Implementation of the CHA algorithm.
@@ -51,6 +51,38 @@ class CHABuilder implements CGBuilder<Invoke, JMethod> {
         DefaultCallGraph callGraph = new DefaultCallGraph();
         callGraph.addEntryMethod(entry);
         // TODO - finish me
+
+        ArrayList<JMethod> workList = new ArrayList<>();
+        workList.add(entry);
+
+        while (workList.size() > 0) {
+            JMethod m = workList.get(0);
+            workList.remove(m);
+
+            if (!callGraph.reachableMethods.contains(m)) {
+                // add current Method m to reachableMethods
+                callGraph.addReachableMethod(m);
+
+                // get all call sites in the Method m
+                Stream<Invoke> callSites = callGraph.callSitesIn(m);
+
+                callSites.forEach(cs -> {
+                    Set<JMethod> T = resolve(cs);
+                    for (JMethod target: T) {
+                        if (target == null) {
+                            continue;
+                        }
+                        CallKind newKindType = CallKind.SPECIAL;
+                        if (target.isStatic()) {
+                            newKindType = CallKind.STATIC;
+                        }
+                        callGraph.addEdge(new Edge<>(newKindType, cs, target));
+                        workList.add(target);
+                    }
+                });
+            }
+        }
+
         return callGraph;
     }
 
@@ -59,7 +91,33 @@ class CHABuilder implements CGBuilder<Invoke, JMethod> {
      */
     private Set<JMethod> resolve(Invoke callSite) {
         // TODO - finish me
-        return null;
+        Set<JMethod> result = new HashSet<>();
+        MethodRef calleeMethodProgInfo = callSite.getMethodRef();
+
+        JClass calleeMethodDeclaredClass = calleeMethodProgInfo.getDeclaringClass();
+        Subsignature calleeMethodSubSig = calleeMethodProgInfo.getSubsignature();
+
+        // slides show that result = {calleeMethodSubSig}, but does not it should be a JMethod?
+        if (callSite.isStatic()) {
+            // just return the method
+            result.add(calleeMethodDeclaredClass.getDeclaredMethod(calleeMethodSubSig));
+        } else if(callSite.isSpecial()) {
+            // the class type of calleeMethodSubSig
+            result.add(dispatch(calleeMethodDeclaredClass, calleeMethodSubSig));
+        } else if(callSite.isVirtual()) {
+            // the declared type of receiver var
+            result.add(dispatch(calleeMethodDeclaredClass, calleeMethodSubSig));
+            for (JClass subclassOfCallee: hierarchy.getDirectSubclassesOf(calleeMethodDeclaredClass)) {
+                result.add(dispatch(subclassOfCallee, calleeMethodSubSig));
+            }
+        } else if(callSite.isInterface()) {
+            result.add(dispatch(calleeMethodDeclaredClass, calleeMethodSubSig));
+            for (JClass subinterfaceOfCallee: hierarchy.getDirectImplementorsOf(calleeMethodDeclaredClass)) {
+                result.add(dispatch(subinterfaceOfCallee, calleeMethodSubSig));
+            }
+        }
+
+        return result;
     }
 
     /**
@@ -70,6 +128,17 @@ class CHABuilder implements CGBuilder<Invoke, JMethod> {
      */
     private JMethod dispatch(JClass jclass, Subsignature subsignature) {
         // TODO - finish me
+
+        if (jclass != null ) {
+            Collection<JMethod> declaredMethods = jclass.getDeclaredMethods();
+            for (JMethod declaredMethod: declaredMethods) {
+                if (!declaredMethod.isAbstract() && declaredMethod.getSubsignature() == subsignature) {
+                    return declaredMethod;
+                }
+            }
+            return dispatch(jclass.getSuperClass(), subsignature);
+        }
+
         return null;
     }
 }

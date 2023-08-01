@@ -25,19 +25,11 @@ package pascal.taie.analysis.dataflow.analysis.constprop;
 import pascal.taie.analysis.dataflow.analysis.AbstractDataflowAnalysis;
 import pascal.taie.analysis.graph.cfg.CFG;
 import pascal.taie.config.AnalysisConfig;
-import pascal.taie.ir.IR;
-import pascal.taie.ir.exp.ArithmeticExp;
-import pascal.taie.ir.exp.BinaryExp;
-import pascal.taie.ir.exp.BitwiseExp;
-import pascal.taie.ir.exp.ConditionExp;
-import pascal.taie.ir.exp.Exp;
-import pascal.taie.ir.exp.IntLiteral;
-import pascal.taie.ir.exp.ShiftExp;
-import pascal.taie.ir.exp.Var;
-import pascal.taie.ir.stmt.DefinitionStmt;
+import pascal.taie.ir.exp.*;
 import pascal.taie.ir.stmt.Stmt;
 import pascal.taie.language.type.PrimitiveType;
 import pascal.taie.language.type.Type;
+
 import pascal.taie.util.AnalysisException;
 
 public class ConstantPropagation extends
@@ -57,18 +49,28 @@ public class ConstantPropagation extends
     @Override
     public CPFact newBoundaryFact(CFG<Stmt> cfg) {
         // TODO - finish me
-        return null;
+        CPFact boundaryFact = new CPFact();
+        for(Var param: cfg.getIR().getParams()) {   // cfg.getIR return `DefaultIR` of <SimpleBinary: int nac(int)>, i.e. the whole function information
+            if(canHoldInt(param)) {
+                boundaryFact.update(param, Value.getNAC());
+            }
+        }
+        return boundaryFact;
     }
 
     @Override
     public CPFact newInitialFact() {
         // TODO - finish me
-        return null;
+        return new CPFact();
     }
 
     @Override
     public void meetInto(CPFact fact, CPFact target) {
         // TODO - finish me
+        for(Var key: fact.keySet()) {
+            Value value = meetValue(fact.get(key), target.get(key));
+            target.update(key, value);
+        }
     }
 
     /**
@@ -76,13 +78,53 @@ public class ConstantPropagation extends
      */
     public Value meetValue(Value v1, Value v2) {
         // TODO - finish me
-        return null;
+        Value value = null;
+        if(v1.isNAC() || v2.isNAC()) {
+            value = Value.getNAC();
+        } else if(v1.isUndef()) {
+            value = v2;
+        } else if(v2.isUndef()) {
+            value = v1;
+        } else if(v1.isConstant() && v2.isConstant()) {
+            if(v1.getConstant() == v2.getConstant()) {
+                value = Value.makeConstant(v1.getConstant());
+            } else {
+                value = Value.getNAC();
+            }
+        }
+
+        return value;
     }
 
     @Override
     public boolean transferNode(Stmt stmt, CPFact in, CPFact out) {
         // TODO - finish me
-        return false;
+        boolean changed = false;
+        CPFact newOut = in.copy();
+
+        if(stmt.getUses().size() == 0) {
+            // control instruction, ignore
+        } else {
+            if(!stmt.getDef().isEmpty() && stmt.getDef().get() instanceof Var) {
+                Exp rightExp = stmt.getUses().get(stmt.getUses().size() - 1);
+                Value rightValue = evaluate(rightExp, in);
+
+                Var leftValue = (Var)stmt.getDef().get();
+
+                if(canHoldInt(leftValue)) {                 // the var can not hold int will always be the init value: Value.getNAC()
+                    newOut.update(leftValue, rightValue);   // update includes add and remove
+                }
+            }
+            // function declaration, return, control instruction(if)
+        }
+
+        if(!newOut.equals(out)) {
+            changed = true;
+        }
+        out.clear();
+        out.copyFrom(newOut);
+
+        return changed;
     }
 
     /**
@@ -112,6 +154,74 @@ public class ConstantPropagation extends
      */
     public static Value evaluate(Exp exp, CPFact in) {
         // TODO - finish me
-        return null;
+        Value value = null;
+
+        if (exp instanceof Var) {
+            Var tVar = ((Var) exp);
+            value = in.get(tVar);
+        } else if (exp instanceof IntLiteral) {
+            value = Value.makeConstant(((IntLiteral) exp).getValue());
+        } else if (exp instanceof BinaryExp) {
+            BinaryExp.Op op = ((BinaryExp) exp).getOperator();
+            Var op1 = ((BinaryExp) exp).getOperand1();
+            Var op2 = ((BinaryExp) exp).getOperand2();
+            Value value1 = in.get(op1);
+            Value value2 = in.get(op2);
+
+            if (value1.isConstant() && value2.isConstant()) {
+                int t1 = value1.getConstant();
+                int t2 = value2.getConstant();
+                int tResult = 0xdeadbeef;
+                switch (op.toString()) {
+                    case "==" -> tResult = t1 == t2 ? 1 : 0;
+                    case "!=" -> tResult = t1 != t2 ? 1 : 0;
+                    case "<" -> tResult = t1 < t2 ? 1 : 0;
+                    case ">" -> tResult = t1 > t2 ? 1 : 0;
+                    case "<=" -> tResult = t1 <= t2 ? 1 : 0;
+                    case ">=" -> tResult = t1 >= t2 ? 1 : 0;
+
+                    case "|" -> tResult = t1 | t2;
+                    case "&" -> tResult = t1 & t2;
+                    case "^" -> tResult = t1 ^ t2;
+
+                    case ">>" -> tResult = t1 >> t2;
+                    case "<<" -> tResult = t1 << t2;
+                    case ">>>" -> tResult = t1 >>> t2;
+
+                    case "+" -> tResult = t1 + t2;
+                    case "-" -> tResult = t1 - t2;
+                    case "*" -> tResult = t1 * t2;
+                    case "/" -> {
+                        if (t2 == 0) {
+                            value = Value.getUndef();
+                        } else {
+                            tResult = t1 / t2;
+                        }
+                    }
+                    case "%" -> {
+                        if (t2 == 0) {
+                            value = Value.getUndef();
+                        } else {
+                            tResult = t1 % t2;
+                        }
+                    }
+                    default -> throw new AnalysisException(exp.toString() + " is not supported");
+                }
+                if (value == null) {
+                    value = Value.makeConstant(tResult);
+                }
+            } else if (value1.isNAC() || value2.isNAC()) {
+                value = Value.getNAC();
+                if (value1.isNAC() && !value2.isNAC() && value2.getConstant() == 0 && (op.toString() == "/" || op.toString() == "%")) {
+                    value = Value.getUndef();
+                }
+            } else {
+                value = Value.getUndef();
+            }
+        } else {
+            value = Value.getNAC();
+        }
+
+        return value;
     }
 }

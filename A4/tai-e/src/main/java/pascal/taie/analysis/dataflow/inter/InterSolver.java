@@ -23,12 +23,14 @@
 package pascal.taie.analysis.dataflow.inter;
 
 import pascal.taie.analysis.dataflow.fact.DataflowResult;
+import pascal.taie.analysis.graph.callgraph.Edge;
 import pascal.taie.analysis.graph.icfg.ICFG;
+import pascal.taie.analysis.graph.icfg.ICFGEdge;
 import pascal.taie.util.collection.SetQueue;
 
-import java.util.Queue;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Solver for inter-procedural data-flow analysis.
@@ -60,9 +62,77 @@ class InterSolver<Method, Node, Fact> {
 
     private void initialize() {
         // TODO - finish me
+        InterDataflowAnalysis<Node, Fact> ida = analysis;
+
+        for (Node node : icfg) {
+            result.setInFact(node, ida.newInitialFact());
+            result.setOutFact(node, ida.newInitialFact());
+        }
+
+        Stream<Method> entryMethods = icfg.entryMethods();
+        entryMethods.forEach(entryMethod -> {
+            Node entryNodeOfEntryMethod = icfg.getEntryOf(entryMethod);
+            result.setInFact(entryNodeOfEntryMethod, ida.newBoundaryFact(entryNodeOfEntryMethod));
+            result.setOutFact(entryNodeOfEntryMethod, ida.newBoundaryFact(entryNodeOfEntryMethod));
+        });
+
     }
 
     private void doSolve() {
         // TODO - finish me
+        InterDataflowAnalysis<Node, Fact> ida = analysis;
+
+        Set<Node> entryAndExitNodeOfEntryMethods = new HashSet<>();
+        Stream<Method> entryMethods = icfg.entryMethods();
+        entryMethods.forEach(entryMethod -> {
+            entryAndExitNodeOfEntryMethods.add(icfg.getEntryOf(entryMethod));
+            entryAndExitNodeOfEntryMethods.add(icfg.getExitOf(entryMethod));
+        });
+
+        List<Node> workList = new ArrayList<>();
+        for (Node node : icfg.getNodes()) {      // cfg.getNodes() will return all statements of a function
+            if(!(entryAndExitNodeOfEntryMethods.contains(node))) {
+                workList.add(node);
+            }
+        }
+
+        while(workList.size() > 0) {
+            Node node = workList.get(0);
+            Fact newIn = ida.newInitialFact();
+
+            // calculate the new InFact
+            Set<Node> preNodes = icfg.getPredsOf(node);
+            Set<ICFGEdge<Node>> preEdges = icfg.getInEdgesOf(node);
+
+            if (node.toString().equals("temp$5 = temp$1 + temp$4")) {
+                int a = 1;
+            }
+            if (node.toString().equals("%intconst2 = 2")) {
+                int b = 2;
+            }
+
+            for(int i = 0; i < preNodes.size(); i++) {
+                Node preNode = preNodes.stream().toList().get(i);
+                ICFGEdge<Node> preEdge = preEdges.stream().toList().get(i);
+
+                Fact transferredFact = ida.transferEdge(preEdge, result.getOutFact(preNode));
+                if (transferredFact != null) {
+                    ida.meetInto(transferredFact, newIn);
+                } else {
+                    int a = 1;
+                }
+            }
+
+            // get the new InFact
+            result.setInFact(node, newIn);
+
+            // handle certain node, input the InFact and will give out the OutFact
+            boolean anyChange = ida.transferNode(node, result.getInFact(node), result.getOutFact(node));
+            if(anyChange) {
+                workList.addAll(icfg.getSuccsOf(node));
+            }
+
+            workList.remove(node);
+        }
     }
 }
