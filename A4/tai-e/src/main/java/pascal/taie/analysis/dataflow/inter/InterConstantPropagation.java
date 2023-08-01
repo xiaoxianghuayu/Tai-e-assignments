@@ -152,21 +152,18 @@ public class InterConstantPropagation extends
         CPFact newFact = new CPFact();
 
         Var returnDef = ((Invoke) ((ReturnEdge) edge).getCallSite()).getLValue();
-        if (!edge.getReturnVars().isEmpty() && returnDef != null) {
+        Collection<Var> returnVars = edge.getReturnVars();
 
-            Collection<Var> returnVars = edge.getReturnVars();
-
-            if (returnVars.size() == 1) {
-                Var returnVar = returnVars.stream().toList().get(0);
-                newFact.update(returnDef, returnOut.get(returnVar));
-            } else {
-                // TODO::NOT ACCURATE
-                newFact.update(returnDef, Value.getNAC());
-            }
-
-            return newFact;
+        if (returnVars.isEmpty() || returnDef == null) {
+            return null;
+        } else if (returnVars.size() == 1) {
+            Var returnVar = returnVars.stream().toList().get(0);
+            newFact.update(returnDef, returnOut.get(returnVar));
+        } else {
+            // TODO::NOT ACCURATE
+            newFact.update(returnDef, Value.getNAC());
         }
 
-        return null;
+        return newFact;
     }
 }

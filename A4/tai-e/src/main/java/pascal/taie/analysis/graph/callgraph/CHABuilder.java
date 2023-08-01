@@ -107,13 +107,32 @@ class CHABuilder implements CGBuilder<Invoke, JMethod> {
         } else if(callSite.isVirtual()) {
             // the declared type of receiver var
             result.add(dispatch(calleeMethodDeclaredClass, calleeMethodSubSig));
+
             for (JClass subclassOfCallee: hierarchy.getDirectSubclassesOf(calleeMethodDeclaredClass)) {
                 result.add(dispatch(subclassOfCallee, calleeMethodSubSig));
             }
         } else if(callSite.isInterface()) {
             result.add(dispatch(calleeMethodDeclaredClass, calleeMethodSubSig));
+
             for (JClass subinterfaceOfCallee: hierarchy.getDirectImplementorsOf(calleeMethodDeclaredClass)) {
                 result.add(dispatch(subinterfaceOfCallee, calleeMethodSubSig));
+
+                // a class that implements a interface can also be extended
+                for (JClass subclassOfCallee: hierarchy.getDirectSubclassesOf(subinterfaceOfCallee)) {
+                    result.add(dispatch(subclassOfCallee, calleeMethodSubSig));
+                }
+            }
+
+            // just for test
+            for (JClass tmp: hierarchy.getDirectSubinterfacesOf(calleeMethodDeclaredClass)) {
+                for (JClass subinterfaceOfCallee: hierarchy.getDirectImplementorsOf(tmp)) {
+                    result.add(dispatch(subinterfaceOfCallee, calleeMethodSubSig));
+
+                    // a class that implements a interface can also be extended
+                    for (JClass subclassOfCallee: hierarchy.getDirectSubclassesOf(subinterfaceOfCallee)) {
+                        result.add(dispatch(subclassOfCallee, calleeMethodSubSig));
+                    }
+                }
             }
         }
 
