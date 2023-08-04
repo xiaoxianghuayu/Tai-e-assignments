@@ -107,9 +107,6 @@ class InterSolver<Method, Node, Fact> {
             if (node.toString().equals("temp$5 = temp$1 + temp$4")) {
                 int a = 1;
             }
-            if (node.toString().equals("%intconst2 = 2")) {
-                int b = 2;
-            }
 
             for(int i = 0; i < preNodes.size(); i++) {
                 Node preNode = preNodes.stream().toList().get(i);
@@ -118,8 +115,6 @@ class InterSolver<Method, Node, Fact> {
                 Fact transferredFact = ida.transferEdge(preEdge, result.getOutFact(preNode));
                 if (transferredFact != null) {
                     ida.meetInto(transferredFact, newIn);
-                } else {
-                    int a = 1;
                 }
             }
 

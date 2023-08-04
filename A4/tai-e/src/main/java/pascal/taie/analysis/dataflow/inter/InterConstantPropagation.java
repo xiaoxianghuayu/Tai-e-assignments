@@ -87,8 +87,7 @@ public class InterConstantPropagation extends
         boolean anyChanged = cp.transferNode(stmt, in, out);
 
         Optional<LValue> stmtDef = stmt.getDef();
-        if (stmtDef.isPresent() && stmtDef.get() instanceof Var) {
-            Var lValue = (Var) stmtDef.get();
+        if (stmtDef.isPresent() && stmtDef.get() instanceof Var lValue) {
             out.remove(lValue);
         }
         return anyChanged;
@@ -112,13 +111,12 @@ public class InterConstantPropagation extends
     @Override
     protected CPFact transferCallToReturnEdge(CallToReturnEdge<Stmt> edge, CPFact out) {
         // TODO - finish me
-
         CPFact newFact = new CPFact();
         newFact.copyFrom(out);
 
         Optional<LValue> newDef = edge.getSource().getDef();
         if (newDef.isPresent()) {
-            LValue lValue = edge.getSource().getDef().get();
+            LValue lValue = newDef.get();
             if (lValue instanceof Var) {
                 newFact.remove((Var) lValue);
             }
