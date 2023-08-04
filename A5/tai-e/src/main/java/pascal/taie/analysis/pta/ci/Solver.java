@@ -93,6 +93,7 @@ class Solver {
      */
     private void addReachable(JMethod method) {
         // TODO - finish me
+        /* traditional method
         if(!callGraph.contains(method)) {
             callGraph.addReachableMethod(method);
 
@@ -176,6 +177,17 @@ class Solver {
             }
 
         }
+        */
+
+        // visitor pattern
+        if(!callGraph.contains(method)) {
+            callGraph.addReachableMethod(method);
+
+            List<Stmt> methodStmts = method.getIR().getStmts();
+            for(Stmt stmt: methodStmts) {
+                stmt.accept(stmtProcessor);
+            }
+        }
 
     }
 
@@ -185,6 +197,91 @@ class Solver {
     private class StmtProcessor implements StmtVisitor<Void> {
         // TODO - if you choose to implement addReachable()
         //  via visitor pattern, then finish me
+
+        @Override
+        public Void visit(New stmt) {
+            New newStmt = stmt;
+            LValue x = newStmt.getLValue();
+            VarPtr xVarPtr = pointerFlowGraph.getVarPtr((Var) x);   // create a VarPtr that represent the `x` which is in fact a Pointer.
+            PointsToSet newPointsToSet = new PointsToSet(heapModel.getObj(newStmt));  // the created VarPtr has its pt(n)
+
+            workList.addEntry(xVarPtr, newPointsToSet);
+            return StmtVisitor.super.visit(stmt);
+        }
+
+        @Override
+        public Void visit(Copy stmt) {
+            Copy copyStmt = stmt;
+            LValue x = copyStmt.getLValue();
+            RValue y = copyStmt.getRValue();
+            VarPtr xVarPtr = pointerFlowGraph.getVarPtr((Var) x);
+            VarPtr yVarPtr = pointerFlowGraph.getVarPtr((Var) y);
+
+            addPFGEdge(yVarPtr, xVarPtr);
+            return StmtVisitor.super.visit(stmt);
+        }
+
+        @Override
+        public Void visit(Invoke stmt) {
+            Invoke invokeStmt = stmt;
+            if (invokeStmt.getInvokeExp() instanceof InvokeStatic invokeStaticStmt) {
+                JMethod targetMethod = invokeStaticStmt.getMethodRef().resolve();
+
+                addReachable(targetMethod);
+
+                List<Var> args = invokeStaticStmt.getArgs();
+                List<Var> params = targetMethod.getIR().getParams();
+                for (int i = 0; i < params.size(); i++) {
+                    Var arg = args.get(i);
+                    Var param = params.get(i);
+                    addPFGEdge(pointerFlowGraph.getVarPtr(arg), pointerFlowGraph.getVarPtr(param));
+                }
+
+                Var receiver = invokeStmt.getResult();
+                if (receiver != null) {
+                    List<Var> rets = targetMethod.getIR().getReturnVars();
+                    for(Var ret: rets) {
+                        addPFGEdge(pointerFlowGraph.getVarPtr(ret), pointerFlowGraph.getVarPtr(receiver));
+                    }
+                }
+            }
+
+            return StmtVisitor.super.visit(stmt);
+        }
+
+        @Override
+        public Void visit(StoreField stmt) {
+            StoreField storeFieldStmt = stmt;
+            if (storeFieldStmt.isStatic()) {
+                VarPtr rightVarPointer = pointerFlowGraph.getVarPtr(storeFieldStmt.getRValue());
+
+                FieldAccess left = storeFieldStmt.getFieldAccess();
+                JField leftStaticField = left.getFieldRef().resolve();
+                StaticField leftStaticFieldPointer = pointerFlowGraph.getStaticField(leftStaticField);
+
+                addPFGEdge(rightVarPointer, leftStaticFieldPointer);
+            }
+
+            return StmtVisitor.super.visit(stmt);
+        }
+
+        @Override
+        public Void visit(LoadField stmt) {
+            LoadField loadFieldStmt = stmt;
+            if (loadFieldStmt.isStatic()) {
+                // y = T.x
+                VarPtr leftVarPointer = pointerFlowGraph.getVarPtr(loadFieldStmt.getLValue());
+
+                FieldAccess right = loadFieldStmt.getFieldAccess();
+                JField rightStaticField = right.getFieldRef().resolve();
+                StaticField rightStaticFieldPointer = pointerFlowGraph.getStaticField(rightStaticField);
+
+                addPFGEdge(rightStaticFieldPointer, leftVarPointer);
+
+            }
+
+            return StmtVisitor.super.visit(stmt);
+        }
     }
 
     /**
