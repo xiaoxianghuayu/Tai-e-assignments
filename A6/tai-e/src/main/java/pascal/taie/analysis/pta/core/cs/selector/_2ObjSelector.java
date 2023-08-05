@@ -29,6 +29,7 @@ import pascal.taie.analysis.pta.core.cs.element.CSMethod;
 import pascal.taie.analysis.pta.core.cs.element.CSObj;
 import pascal.taie.analysis.pta.core.heap.Obj;
 import pascal.taie.language.classes.JMethod;
+import pascal.taie.language.type.Type;
 
 /**
  * Implementation of 2-object sensitivity.
@@ -49,15 +50,35 @@ public class _2ObjSelector implements ContextSelector {
     @Override
     public Context selectContext(CSCallSite callSite, CSObj recv, JMethod callee) {
         // TODO - finish me
-        if (recv.getContext().getLength() > 0) {
-            return ListContext.make(recv.getContext().getElementAt(recv.getContext().getLength() - 1), recv.getObject());
+        // just remove the earliest one and add a new one
+        Obj newContext = recv.getObject();
+        Context oldContext = recv.getContext();
+        if (oldContext.getLength() > 0) {
+            return ListContext.make(oldContext.getElementAt(oldContext.getLength() - 1), newContext);
         }
-        return ListContext.make(recv.getObject());
+        return ListContext.make(newContext);
     }
 
     @Override
     public Context selectHeapContext(CSMethod method, Obj obj) {
         // TODO - finish me
-        return method.getContext();
+        /*
+        3: x1 = temp$0.newX(n1)
+        ...
+        7: X newX(Number p) {
+        8:   X x = new X();
+        9:   x.f = p;
+        10:  return x;
+        11:}
+         */
+        // Context for temp$0: [c]
+        // Context for temp$0.newX(): [c, ct] (which get from above `selectContext()`)
+        // For the `X x = new X()`, `x` will get a context: [c, ct], `new X()` will get a context from `selectHeapContext`
+        // The selectHeapContext only return the last one context: [ct]. It is enough to identify the AllocSite(Also the homework requirement)
+        Context oldContext = method.getContext();
+        if (oldContext.getLength() > 1) {
+            return ListContext.make(oldContext.getElementAt(oldContext.getLength() - 1));
+        }
+        return oldContext;
     }
 }

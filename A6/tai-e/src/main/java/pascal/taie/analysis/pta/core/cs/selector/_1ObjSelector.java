@@ -55,6 +55,6 @@ public class _1ObjSelector implements ContextSelector {
     @Override
     public Context selectHeapContext(CSMethod method, Obj obj) {
         // TODO - finish me
-        return method.getContext();
+        return getEmptyContext();
     }
 }

@@ -141,8 +141,8 @@ class Solver {
             Var leftVar = stmt.getLValue();
             Obj leftObj = heapModel.getObj(stmt);
 
+            CSVar csVarPtr = csManager.getCSVar(this.context, leftVar);
             Context heapContext = contextSelector.selectHeapContext(this.csMethod, leftObj);
-            CSVar csVarPtr = csManager.getCSVar(heapContext, leftVar);
             CSObj csObj = csManager.getCSObj(heapContext, leftObj);
 
             PointsToSet newPointsToSet = PointsToSetFactory.make(csObj);
