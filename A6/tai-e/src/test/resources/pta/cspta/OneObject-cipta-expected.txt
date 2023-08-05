@@ -1,0 +1,58 @@
+--------------Pointer analysis statistics:--------------
+#var pointers: 19 (insens) / 19 (sens)
+#var points-to: 31 (insens) / 31 (sens)
+#static field points-to: 0 (sens)
+#instance field points-to: 4 (sens)
+#array points-to: 0 (sens)
+#reachable methods: 8 (insens) / 8 (sens)
+#call graph edges: 11 (insens) / 11 (sens)
+----------------------------------------
+Points-to sets of all variables
+[]:<A: B get()>/%this -> [[]:NewObj{<OneObject: void m()>[0@L7] new A}]
+[]:<A: B get()>/temp$0 -> [[]:NewObj{<OneObject: void m()>[6@L9] new B}, []:NewObj{<OneObject: void m()>[9@L10] new B}]
+[]:<A: void <init>()>/%this -> [[]:NewObj{<OneObject: void m()>[0@L7] new A}, []:NewObj{<OneObject: void m()>[3@L8] new A}]
+[]:<A: void doSet(B)>/%this -> [[]:NewObj{<OneObject: void m()>[0@L7] new A}, []:NewObj{<OneObject: void m()>[3@L8] new A}]
+[]:<A: void doSet(B)>/p -> [[]:NewObj{<OneObject: void m()>[6@L9] new B}, []:NewObj{<OneObject: void m()>[9@L10] new B}]
+[]:<A: void set(B)>/%this -> [[]:NewObj{<OneObject: void m()>[0@L7] new A}, []:NewObj{<OneObject: void m()>[3@L8] new A}]
+[]:<A: void set(B)>/b -> [[]:NewObj{<OneObject: void m()>[6@L9] new B}, []:NewObj{<OneObject: void m()>[9@L10] new B}]
+[]:<B: void <init>()>/%this -> [[]:NewObj{<OneObject: void m()>[6@L9] new B}, []:NewObj{<OneObject: void m()>[9@L10] new B}]
+[]:<OneObject: void m()>/a1 -> [[]:NewObj{<OneObject: void m()>[0@L7] new A}]
+[]:<OneObject: void m()>/a2 -> [[]:NewObj{<OneObject: void m()>[3@L8] new A}]
+[]:<OneObject: void m()>/b1 -> [[]:NewObj{<OneObject: void m()>[6@L9] new B}]
+[]:<OneObject: void m()>/b2 -> [[]:NewObj{<OneObject: void m()>[9@L10] new B}]
+[]:<OneObject: void m()>/temp$0 -> [[]:NewObj{<OneObject: void m()>[0@L7] new A}]
+[]:<OneObject: void m()>/temp$1 -> [[]:NewObj{<OneObject: void m()>[3@L8] new A}]
+[]:<OneObject: void m()>/temp$2 -> [[]:NewObj{<OneObject: void m()>[6@L9] new B}]
+[]:<OneObject: void m()>/temp$3 -> [[]:NewObj{<OneObject: void m()>[9@L10] new B}]
+[]:<OneObject: void m()>/temp$4 -> [[]:NewObj{<OneObject: void m()>[6@L9] new B}, []:NewObj{<OneObject: void m()>[9@L10] new B}]
+[]:<OneObject: void m()>/x -> [[]:NewObj{<OneObject: void m()>[6@L9] new B}, []:NewObj{<OneObject: void m()>[9@L10] new B}]
+[]:<java.lang.Object: void <init>()>/%this -> [[]:NewObj{<OneObject: void m()>[0@L7] new A}, []:NewObj{<OneObject: void m()>[3@L8] new A}, []:NewObj{<OneObject: void m()>[6@L9] new B}, []:NewObj{<OneObject: void m()>[9@L10] new B}]
+Points-to sets of all static fields
+Points-to sets of all instance fields
+[]:NewObj{<OneObject: void m()>[0@L7] new A}.f -> [[]:NewObj{<OneObject: void m()>[6@L9] new B}, []:NewObj{<OneObject: void m()>[9@L10] new B}]
+[]:NewObj{<OneObject: void m()>[3@L8] new A}.f -> [[]:NewObj{<OneObject: void m()>[6@L9] new B}, []:NewObj{<OneObject: void m()>[9@L10] new B}]
+Points-to sets of all array indexes
+#reachable methods: 8
+----------Reachable methods:----------
+<A: B get()>
+<A: void <init>()>
+<A: void doSet(B)>
+<A: void set(B)>
+<B: void <init>()>
+<OneObject: void m()>
+<OneObject: void main(java.lang.String[])>
+<java.lang.Object: void <init>()>
+#call graph edges: 11
+----------Call graph edges:----------
+<A: void <init>()>[0@L17] invokespecial %this.<java.lang.Object: void <init>()>(); -> [<java.lang.Object: void <init>()>]
+<A: void set(B)>[0@L21] invokevirtual %this.<A: void doSet(B)>(b); -> [<A: void doSet(B)>]
+<B: void <init>()>[0@L33] invokespecial %this.<java.lang.Object: void <init>()>(); -> [<java.lang.Object: void <init>()>]
+<OneObject: void m()>[1@L7] invokespecial temp$0.<A: void <init>()>(); -> [<A: void <init>()>]
+<OneObject: void m()>[4@L8] invokespecial temp$1.<A: void <init>()>(); -> [<A: void <init>()>]
+<OneObject: void m()>[7@L9] invokespecial temp$2.<B: void <init>()>(); -> [<B: void <init>()>]
+<OneObject: void m()>[10@L10] invokespecial temp$3.<B: void <init>()>(); -> [<B: void <init>()>]
+<OneObject: void m()>[12@L11] invokevirtual a1.<A: void set(B)>(b1); -> [<A: void set(B)>]
+<OneObject: void m()>[13@L12] invokevirtual a2.<A: void set(B)>(b2); -> [<A: void set(B)>]
+<OneObject: void m()>[14@L13] temp$4 = invokevirtual a1.<A: B get()>(); -> [<A: B get()>]
+<OneObject: void main(java.lang.String[])>[0@L3] invokestatic <OneObject: void m()>(); -> [<OneObject: void m()>]
+----------------------------------------
