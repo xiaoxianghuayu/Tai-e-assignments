@@ -25,21 +25,16 @@ package pascal.taie.analysis.dataflow.inter;
 import pascal.taie.ir.proginfo.FieldRef;
 import pascal.taie.language.classes.JClass;
 import pascal.taie.util.collection.Pair;
-import org.yaml.snakeyaml.events.AliasEvent;
 import pascal.taie.World;
 import pascal.taie.analysis.dataflow.analysis.constprop.CPFact;
 import pascal.taie.analysis.dataflow.analysis.constprop.ConstantPropagation;
 import pascal.taie.analysis.dataflow.analysis.constprop.Value;
-import pascal.taie.analysis.graph.cfg.CFG;
 import pascal.taie.analysis.graph.cfg.CFGBuilder;
 import pascal.taie.analysis.graph.icfg.CallEdge;
 import pascal.taie.analysis.graph.icfg.CallToReturnEdge;
 import pascal.taie.analysis.graph.icfg.NormalEdge;
 import pascal.taie.analysis.graph.icfg.ReturnEdge;
 import pascal.taie.analysis.pta.PointerAnalysisResult;
-import pascal.taie.analysis.pta.core.cs.element.InstanceField;
-import pascal.taie.analysis.pta.core.cs.element.Pointer;
-import pascal.taie.analysis.pta.core.cs.element.StaticField;
 import pascal.taie.analysis.pta.core.heap.Obj;
 import pascal.taie.config.AnalysisConfig;
 import pascal.taie.ir.IR;
@@ -47,8 +42,6 @@ import pascal.taie.ir.exp.*;
 import pascal.taie.ir.stmt.Invoke;
 import pascal.taie.ir.stmt.LoadField;
 import pascal.taie.ir.stmt.Stmt;
-import pascal.taie.ir.stmt.StoreField;
-import pascal.taie.language.classes.JField;
 import pascal.taie.language.classes.JMethod;
 
 import java.util.*;
@@ -64,9 +57,10 @@ public class InterConstantPropagation extends
     private final ConstantPropagation cp;
 
     // new field
-    public static Map<Var, Set<Var>> aliasMap = new HashMap<>();
-    public static Map<Pair<?, ?>, Value> varValueMap = new HashMap<>();
+    public static Map<Obj, Set<Var>> aliasMap = new HashMap<>();
+    public static Map<Pair<?, ?>, Value> varMap = new HashMap<>();
     public static final Map<Pair<JClass, FieldRef>, Set<LoadField>> staticLoadFieldStmtMap = new HashMap<>();
+    public static PointerAnalysisResult ptaResult;
 
     public InterConstantPropagation(AnalysisConfig config) {
         super(config);
@@ -79,19 +73,13 @@ public class InterConstantPropagation extends
         PointerAnalysisResult pta = World.get().getResult(ptaId);
         // You can do initialization work here
 
-        for (Var var1: pta.getVars()) {
-            for (Var var2: pta.getVars()) {
-                // exists overlap
-                for (Obj basePtr: pta.getPointsToSet(var1)) {
-                    if (pta.getPointsToSet(var2).contains(basePtr)) {
-                        // add var2 to var1's Alias Set(including var1 itself)
-                        Set<Var> varList = aliasMap.getOrDefault(var1, new HashSet<>());
-                        if (!varList.contains(var2)) {
-                            varList.add(var2);
-                            aliasMap.put(var1, varList);
-                        }
-                    }
-                }
+        ptaResult = pta;
+
+        for (Var var: pta.getVars()) {
+            for (Obj obj : pta.getPointsToSet(var)) {
+                Set<Var> varList = aliasMap.getOrDefault(obj, new HashSet<>());
+                varList.add(var);
+                aliasMap.put(obj, varList);
             }
         }
 

@@ -28,10 +28,8 @@ import pascal.taie.analysis.dataflow.analysis.constprop.Value;
 import pascal.taie.analysis.dataflow.fact.DataflowResult;
 import pascal.taie.analysis.graph.icfg.ICFG;
 import pascal.taie.analysis.graph.icfg.ICFGEdge;
-import pascal.taie.ir.exp.FieldAccess;
-import pascal.taie.ir.exp.InstanceFieldAccess;
-import pascal.taie.ir.exp.StaticFieldAccess;
-import pascal.taie.ir.exp.Var;
+import pascal.taie.analysis.pta.core.heap.Obj;
+import pascal.taie.ir.exp.*;
 import pascal.taie.ir.proginfo.FieldRef;
 import pascal.taie.ir.stmt.LoadArray;
 import pascal.taie.ir.stmt.LoadField;
@@ -42,7 +40,6 @@ import pascal.taie.util.collection.Pair;
 import pascal.taie.util.collection.SetQueue;
 
 import java.util.*;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 
@@ -164,28 +161,34 @@ class InterSolver<Method, Node, Fact> {
 //        if (!ConstantPropagation.canHoldInt(storeFieldStmt.getRValue())) { return; }
         if (storeFieldStmt.getFieldAccess() instanceof InstanceFieldAccess instanceFieldAccess) {
             Var base = instanceFieldAccess.getBase();
-            aliasMap.get(base).forEach(alias -> {
-                Pair<Var, FieldRef> mapKey = new Pair<>(alias, storeFieldStmt.getFieldRef());
-                Value oldValue = varValueMap.getOrDefault(mapKey, Value.getUndef());
+
+            for (Obj obj : ptaResult.getPointsToSet(base)) {
+                Pair<Obj, FieldRef> mapKey = new Pair<>(obj, storeFieldStmt.getFieldRef());
+                Value oldValue = varMap.getOrDefault(mapKey, Value.getUndef());
                 Value newValue = ConstantPropagation.evaluate(storeFieldStmt.getRValue(), in);
                 newValue = meetValue(oldValue, newValue);
 
-                varValueMap.put(mapKey, newValue);
+                varMap.put(mapKey, newValue);
 
-                for(LoadField loadFieldStmt: alias.getLoadFields()) {
-                    if (loadFieldStmt.getFieldRef().equals(storeFieldStmt.getFieldRef())) {
-                        workList.offer((Node) loadFieldStmt);
-                    }
+                if (!oldValue.equals(newValue)) {
+                    Set<Var> aliases = aliasMap.get(obj);
+                    aliases.forEach(alias -> {
+                        for(LoadField loadFieldStmt: alias.getLoadFields()) {
+                            if (loadFieldStmt.getFieldRef().equals(storeFieldStmt.getFieldRef())) {
+                                workList.offer((Node) loadFieldStmt);
+                            }
+                        }
+                    });
                 }
-            });
+            }
         } else if (storeFieldStmt.getFieldAccess() instanceof StaticFieldAccess staticFieldAccess) {
             JClass clz = storeFieldStmt.getFieldRef().getDeclaringClass();
             Pair<JClass, FieldRef> mapKey = new Pair<>(clz, storeFieldStmt.getFieldRef());
-            Value oldValue = varValueMap.getOrDefault(mapKey, Value.getUndef());
+            Value oldValue = varMap.getOrDefault(mapKey, Value.getUndef());
             Value newValue = ConstantPropagation.evaluate(storeFieldStmt.getRValue(), in);
             newValue = meetValue(oldValue, newValue);
 
-            varValueMap.put(mapKey, newValue);
+            varMap.put(mapKey, newValue);
 
             staticLoadFieldStmtMap.get(mapKey).forEach(staticLoadFieldStmt -> {
                 workList.offer((Node) staticLoadFieldStmt);
@@ -194,6 +197,30 @@ class InterSolver<Method, Node, Fact> {
     }
 
     private void handleStoreArray(StoreArray storeArrayStmt, CPFact in) {
+        // a[i] = x
+//        if(!ConstantPropagation.canHoldInt(s.getRValue())) return;
 
+        ArrayAccess storeArrayAccess = storeArrayStmt.getArrayAccess();
+        Var base = storeArrayAccess.getBase();
+        Value index = ConstantPropagation.evaluate(storeArrayAccess.getIndex(), in);
+        // no alias, no effect on other stmt
+        if (index.isUndef()) return;
+
+        for (Obj obj: ptaResult.getPointsToSet(base)) {
+            Pair<Obj, Value> mapKey = new Pair<>(obj, index);
+            Value oldValue = varMap.getOrDefault(mapKey, Value.getUndef());
+            Value newValue = ConstantPropagation.evaluate(storeArrayStmt.getRValue(), in);
+            newValue = meetValue(oldValue, newValue);
+
+            varMap.put(mapKey, newValue);
+            if (!oldValue.equals(newValue)) {
+                Set<Var> aliases = aliasMap.get(obj);
+                aliases.forEach(alias -> {
+                    for(LoadArray loadArrayStmt: alias.getLoadArrays()) {
+                        workList.offer((Node) loadArrayStmt);
+                    }
+                });
+            }
+        }
     }
 }

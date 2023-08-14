@@ -24,6 +24,7 @@ package pascal.taie.analysis.dataflow.analysis.constprop;
 
 import pascal.taie.analysis.dataflow.analysis.AbstractDataflowAnalysis;
 import pascal.taie.analysis.graph.cfg.CFG;
+import pascal.taie.analysis.pta.core.heap.Obj;
 import pascal.taie.config.AnalysisConfig;
 import pascal.taie.ir.exp.*;
 import pascal.taie.ir.proginfo.FieldRef;
@@ -35,8 +36,9 @@ import pascal.taie.language.type.Type;
 import pascal.taie.util.AnalysisException;
 import pascal.taie.util.collection.Pair;
 
-import static pascal.taie.analysis.dataflow.inter.InterConstantPropagation.aliasMap;
-import static pascal.taie.analysis.dataflow.inter.InterConstantPropagation.varValueMap;
+import java.util.Map;
+
+import static pascal.taie.analysis.dataflow.inter.InterConstantPropagation.*;
 
 public class ConstantPropagation extends
         AbstractDataflowAnalysis<Stmt, CPFact> {
@@ -226,16 +228,41 @@ public class ConstantPropagation extends
             }
         } else if (exp instanceof InstanceFieldAccess instanceFieldAccess) {
             value = Value.getUndef();
-            for (Var aliasVar : aliasMap.get(instanceFieldAccess.getBase())) {
-                Pair<Var, FieldRef> mapKey = new Pair<>(aliasVar, instanceFieldAccess.getFieldRef());
-                Value aliasValue = varValueMap.getOrDefault(mapKey, Value.getUndef());
+            for (Obj obj : ptaResult.getPointsToSet(instanceFieldAccess.getBase())) {
+                Pair<Obj, FieldRef> mapKey = new Pair<>(obj, instanceFieldAccess.getFieldRef());
+                Value aliasValue = varMap.getOrDefault(mapKey, Value.getUndef());
                 value = meetValue(aliasValue, value);
             }
         } else if (exp instanceof StaticFieldAccess staticFieldAccess) {
             Pair<JClass, FieldRef> mapKey = new Pair<>(staticFieldAccess.getFieldRef().getDeclaringClass(), staticFieldAccess.getFieldRef());
-            value = varValueMap.getOrDefault(mapKey, Value.getUndef());
-        } else if (exp instanceof ArrayAccess) {
-            
+            value = varMap.getOrDefault(mapKey, Value.getUndef());
+        } else if (exp instanceof ArrayAccess arrayAccess) {
+            value = Value.getUndef();
+
+            Value index = evaluate(arrayAccess.getIndex(), in);
+            if (index.isConstant()) {
+                for (Obj obj : ptaResult.getPointsToSet(arrayAccess.getBase())) {
+                    Pair<Obj, Value> mapKey = new Pair<>(obj, index);
+                    Value aliasValue = varMap.getOrDefault(mapKey, Value.getUndef());
+                    value = meetValue(aliasValue, value);
+
+                    Pair<Obj, Value> mapKey1 = new Pair<>(obj, Value.getNAC());
+                    Value aliasValue1 = varMap.getOrDefault(mapKey1, Value.getUndef());
+                    value = meetValue(aliasValue1, value);
+                }
+            } else if (index.isNAC()) {
+                for (Obj obj : ptaResult.getPointsToSet(arrayAccess.getBase())) {
+                    // varMap will not have a[i] that i is UNDEF
+                    for (Map.Entry<Pair<?, ?>, Value> pairValueEntry : varMap.entrySet()) {
+                        if (pairValueEntry.getKey().first().equals(obj) && pairValueEntry.getKey().second() instanceof Value) {
+                            value = meetValue(pairValueEntry.getValue(), value);
+                        }
+                    }
+                }
+            } else {
+                // no alias
+                value = Value.getUndef();
+            }
         } else {
             value = Value.getNAC();
         }
