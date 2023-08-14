@@ -22,13 +22,32 @@
 
 package pascal.taie.analysis.dataflow.inter;
 
+import pascal.taie.analysis.dataflow.analysis.constprop.CPFact;
+import pascal.taie.analysis.dataflow.analysis.constprop.ConstantPropagation;
+import pascal.taie.analysis.dataflow.analysis.constprop.Value;
 import pascal.taie.analysis.dataflow.fact.DataflowResult;
 import pascal.taie.analysis.graph.icfg.ICFG;
+import pascal.taie.analysis.graph.icfg.ICFGEdge;
+import pascal.taie.ir.exp.FieldAccess;
+import pascal.taie.ir.exp.InstanceFieldAccess;
+import pascal.taie.ir.exp.StaticFieldAccess;
+import pascal.taie.ir.exp.Var;
+import pascal.taie.ir.proginfo.FieldRef;
+import pascal.taie.ir.stmt.LoadArray;
+import pascal.taie.ir.stmt.LoadField;
+import pascal.taie.ir.stmt.StoreArray;
+import pascal.taie.ir.stmt.StoreField;
+import pascal.taie.language.classes.JClass;
+import pascal.taie.util.collection.Pair;
 import pascal.taie.util.collection.SetQueue;
 
-import java.util.Queue;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+
+import static pascal.taie.analysis.dataflow.analysis.constprop.ConstantPropagation.meetValue;
+import static pascal.taie.analysis.dataflow.inter.InterConstantPropagation.*;
 
 /**
  * Solver for inter-procedural data-flow analysis.
@@ -60,9 +79,121 @@ class InterSolver<Method, Node, Fact> {
 
     private void initialize() {
         // TODO - finish me
+
+        InterDataflowAnalysis<Node, Fact> ida = analysis;
+
+        for (Node node : icfg) {
+            result.setInFact(node, ida.newInitialFact());
+            result.setOutFact(node, ida.newInitialFact());
+        }
+
+        Stream<Method> entryMethods = icfg.entryMethods();
+        entryMethods.forEach(entryMethod -> {
+            Node entryNodeOfEntryMethod = icfg.getEntryOf(entryMethod);
+            result.setInFact(entryNodeOfEntryMethod, ida.newBoundaryFact(entryNodeOfEntryMethod));
+            result.setOutFact(entryNodeOfEntryMethod, ida.newBoundaryFact(entryNodeOfEntryMethod));
+        });
     }
 
     private void doSolve() {
         // TODO - finish me
+
+        InterDataflowAnalysis<Node, Fact> ida = analysis;
+
+        Set<Node> entryAndExitNodeOfEntryMethods = new HashSet<>();
+        Stream<Method> entryMethods = icfg.entryMethods();
+        entryMethods.forEach(entryMethod -> {
+            entryAndExitNodeOfEntryMethods.add(icfg.getEntryOf(entryMethod));
+            entryAndExitNodeOfEntryMethods.add(icfg.getExitOf(entryMethod));
+        });
+
+        workList = new SetQueue<>();
+        for (Node node : icfg.getNodes()) {      // cfg.getNodes() will return all statements of a function
+            if(!(entryAndExitNodeOfEntryMethods.contains(node))) {
+                workList.add(node);
+            }
+        }
+
+        while(!workList.isEmpty()) {
+            Node node = workList.poll();
+            Fact newIn = ida.newInitialFact();
+
+            // calculate the new InFact
+            Set<Node> preNodes = icfg.getPredsOf(node);
+            Set<ICFGEdge<Node>> preEdges = icfg.getInEdgesOf(node);
+
+            if (node.toString().equals("y = a2.<A: int f>")) {
+                int a = 1;
+            }
+
+            for(int i = 0; i < preNodes.size(); i++) {
+                Node preNode = preNodes.stream().toList().get(i);
+                ICFGEdge<Node> preEdge = preEdges.stream().toList().get(i);
+
+                Fact transferredFact = ida.transferEdge(preEdge, result.getOutFact(preNode));
+                if (transferredFact != null) {
+                    ida.meetInto(transferredFact, newIn);
+                }
+            }
+
+            // get the new InFact
+            result.setInFact(node, newIn);
+
+            // handle store
+            handleStoreStmt(node, (CPFact) result.getInFact(node));
+
+            // handle certain node, input the InFact and will give out the OutFact
+            boolean anyChange = ida.transferNode(node, result.getInFact(node), result.getOutFact(node));
+            if(anyChange) {
+                workList.addAll(icfg.getSuccsOf(node));
+            }
+
+        }
+    }
+
+    private void handleStoreStmt(Node stmt, CPFact in) {
+        if (stmt instanceof StoreField storeFieldStmt) {
+            handleStoreField(storeFieldStmt, in);
+        } else if (stmt instanceof StoreArray storeArrayStmt) {
+            handleStoreArray(storeArrayStmt, in);
+        }
+    }
+
+    private void handleStoreField(StoreField storeFieldStmt, CPFact in) {
+        // x.f = y
+//        if (!ConstantPropagation.canHoldInt(storeFieldStmt.getRValue())) { return; }
+        if (storeFieldStmt.getFieldAccess() instanceof InstanceFieldAccess instanceFieldAccess) {
+            Var base = instanceFieldAccess.getBase();
+            aliasMap.get(base).forEach(alias -> {
+                Pair<Var, FieldRef> mapKey = new Pair<>(alias, storeFieldStmt.getFieldRef());
+                Value oldValue = varValueMap.getOrDefault(mapKey, Value.getUndef());
+                Value newValue = ConstantPropagation.evaluate(storeFieldStmt.getRValue(), in);
+                newValue = meetValue(oldValue, newValue);
+
+                varValueMap.put(mapKey, newValue);
+
+                for(LoadField loadFieldStmt: alias.getLoadFields()) {
+                    if (loadFieldStmt.getFieldRef().equals(storeFieldStmt.getFieldRef())) {
+                        workList.offer((Node) loadFieldStmt);
+                    }
+                }
+            });
+        } else if (storeFieldStmt.getFieldAccess() instanceof StaticFieldAccess staticFieldAccess) {
+            JClass clz = storeFieldStmt.getFieldRef().getDeclaringClass();
+            Pair<JClass, FieldRef> mapKey = new Pair<>(clz, storeFieldStmt.getFieldRef());
+            Value oldValue = varValueMap.getOrDefault(mapKey, Value.getUndef());
+            Value newValue = ConstantPropagation.evaluate(storeFieldStmt.getRValue(), in);
+            newValue = meetValue(oldValue, newValue);
+
+            varValueMap.put(mapKey, newValue);
+
+            staticLoadFieldStmtMap.get(mapKey).forEach(staticLoadFieldStmt -> {
+                workList.offer((Node) staticLoadFieldStmt);
+            });
+        }
+    }
+
+    private void handleStoreArray(StoreArray storeArrayStmt, CPFact in) {
+
     }
 }
