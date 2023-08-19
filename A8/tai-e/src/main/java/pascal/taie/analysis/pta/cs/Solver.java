@@ -46,7 +46,6 @@ import pascal.taie.analysis.pta.core.heap.HeapModel;
 import pascal.taie.analysis.pta.core.heap.MockObj;
 import pascal.taie.analysis.pta.core.heap.Obj;
 import pascal.taie.analysis.pta.plugin.taint.TaintAnalysiss;
-import pascal.taie.analysis.pta.plugin.taint.TaintFlow;
 import pascal.taie.analysis.pta.pts.PointsToSet;
 import pascal.taie.analysis.pta.pts.PointsToSetFactory;
 import pascal.taie.config.AnalysisOptions;
@@ -57,7 +56,6 @@ import pascal.taie.language.classes.JMethod;
 import pascal.taie.language.type.Type;
 
 import java.util.List;
-import java.util.Set;
 
 public class Solver {
 
@@ -198,28 +196,25 @@ public class Solver {
                 handleArgAndRet(stmt, c, targetMethod, ct);
             }
 
-            // Taint: static source() static sink()
+            // Taint: sink() and source() are both static
             if (stmt.getInvokeExp() instanceof InvokeStatic invokeStaticStmt) {
-                JMethod method = invokeStaticStmt.getMethodRef().resolve();
-                Type type = invokeStaticStmt.getType();
-                if (taintAnalysis.inSourceSet(method, type)) {
+                JMethod currentMethod = invokeStaticStmt.getMethodRef().resolve();
+                Type retType = invokeStaticStmt.getType();
+                if (taintAnalysis.inSourceSet(currentMethod, retType)) {
                     taintAnalysis.sourceInvoke.add(stmt);
-                    Context emptyContext = contextSelector.getEmptyContext();
 
-                    Obj newTaintObj = taintAnalysis.makeTaintObj(stmt, type);
+                    Context emptyContext = contextSelector.getEmptyContext();
+                    Obj newTaintObj = taintAnalysis.makeTaintObj(stmt, retType);
                     CSObj newCSTaintObj = csManager.getCSObj(emptyContext, newTaintObj);
 
                     Var left = stmt.getResult();
                     if (left != null) {
-//                        PointsToSet newPointsToSet = PointsToSetFactory.make(newCSTaintObj);
-//                        workList.addEntry(csManager.getCSVar(emptyContext, left), newPointsToSet);
                         csManager.getCSVar(emptyContext, left).getPointsToSet().addObject(newCSTaintObj);
                     }
-                } else if (taintAnalysis.getSinkArgIndex(method) != -1) {
+                } else if (taintAnalysis.getSinkArgIndex(currentMethod) != -1) {
                     taintAnalysis.sinkInvoke.add(csManager.getCSCallSite(this.context, stmt));
                 }
             }
-
 
             return StmtVisitor.super.visit(stmt);
         }
@@ -376,10 +371,6 @@ public class Solver {
         for(Invoke invokeStmt: recv.getVar().getInvokes()) {
             JMethod targetMethod = resolveCallee(recvObj, invokeStmt);
 
-            if (recvObj.getObject() instanceof MockObj && targetMethod == null) {
-                int a = 1;
-
-            }
             // the csCallSiteContext includes the context and the line number of the call site
             Context c = recv.getContext();
             CSCallSite csCallSite = csManager.getCSCallSite(c, invokeStmt);
@@ -400,38 +391,48 @@ public class Solver {
             }
 
             // TODO::handle TaintTransfer
-            JMethod method = invokeStmt.getInvokeExp().getMethodRef().resolve();
-            Type type = invokeStmt.getInvokeExp().getType();
+            JMethod currentMethod = invokeStmt.getInvokeExp().getMethodRef().resolve();
+            Type retType = invokeStmt.getInvokeExp().getType();
             int index = -1;
+
             // argToResult example: String s2 = s1.concat(taint);
-            if ((index = taintAnalysis.getTaintTransferArgToResultArgIndex(method, type)) != -1) {
+            if ((index = taintAnalysis.getTaintTransferArgToResultArgIndex(currentMethod, retType)) != -1) {
                 CSVar csArg = csManager.getCSVar(c, invokeStmt.getInvokeExp().getArg(index));
                 CSVar csResult = csManager.getCSVar(c, invokeStmt.getLValue());
+
                 for(CSObj csObj: csArg.getPointsToSet()) {
-                    if (csObj.getObject() instanceof MockObj mockObj) {
-                        workList.addEntry(csResult, PointsToSetFactory.make(csManager.getCSObj(c, taintAnalysis.makeTaintObj((Invoke) mockObj.getAllocation(), type))));
+                    Obj obj = csObj.getObject();
+                    if (taintAnalysis.isTaintObj(obj)) {
+                        Obj newTaintObj = taintAnalysis.makeTaintObj(taintAnalysis.getTaintSourceCall(obj), retType);
+                        workList.addEntry(csResult, PointsToSetFactory.make(csManager.getCSObj(c, newTaintObj)));
                     }
                 }
             }
 
             // baseToResult example:  String s2 = taint.concat(s1);
-            if (!invokeStmt.isStatic() && (index = taintAnalysis.getTaintTransferBaseToResultArgIndex(method, type)) != -1) {
+            if (!invokeStmt.isStatic() && (index = taintAnalysis.getTaintTransferBaseToResultArgIndex(currentMethod, retType)) != -1) {
                 CSVar csResult = csManager.getCSVar(c, invokeStmt.getLValue());
                 CSVar csBase = recv;
+
                 for(CSObj csObj: csBase.getPointsToSet()) {
-                    if (csObj.getObject() instanceof MockObj mockObj) {
-                        workList.addEntry(csResult, PointsToSetFactory.make(csManager.getCSObj(c, taintAnalysis.makeTaintObj((Invoke) mockObj.getAllocation(), type))));
+                    Obj obj = csObj.getObject();
+                    if (taintAnalysis.isTaintObj(obj)) {
+                        Obj newTaintObj = taintAnalysis.makeTaintObj(taintAnalysis.getTaintSourceCall(obj), retType);
+                        workList.addEntry(csResult, PointsToSetFactory.make(csManager.getCSObj(c, newTaintObj)));
                     }
                 }
             }
 
             // argToBase example: sb.append(taint);
-            if (!invokeStmt.isStatic() && (index = taintAnalysis.getTaintTransferArgToBaseArgIndex(method, type)) != -1) {
+            if (!invokeStmt.isStatic() && (index = taintAnalysis.getTaintTransferArgToBaseArgIndex(currentMethod, retType)) != -1) {
                 CSVar csArg = csManager.getCSVar(c, invokeStmt.getInvokeExp().getArg(index));
                 CSVar csBase = recv;
+
                 for(CSObj csObj: csArg.getPointsToSet()) {
-                    if (csObj.getObject() instanceof MockObj mockObj) {
-                        workList.addEntry(csBase, PointsToSetFactory.make(csManager.getCSObj(c, taintAnalysis.makeTaintObj((Invoke) mockObj.getAllocation(), type))));
+                    Obj obj = csObj.getObject();
+                    if (taintAnalysis.isTaintObj(obj)) {
+                        Obj newTaintObj = taintAnalysis.makeTaintObj(taintAnalysis.getTaintSourceCall(obj), retType);
+                        workList.addEntry(csBase, PointsToSetFactory.make(csManager.getCSObj(c, newTaintObj)));
                     }
                 }
             }

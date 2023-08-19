@@ -127,6 +127,14 @@ public class TaintAnalysiss {
         return manager.makeTaint(source, type);
     }
 
+    public boolean isTaintObj(Obj obj) {
+        return manager.isTaint(obj);
+    }
+
+    public Invoke getTaintSourceCall(Obj obj) {
+        return manager.getSourceCall(obj);
+    }
+
     public void onFinish() {
         Set<TaintFlow> taintFlows = collectTaintFlows();
         solver.getResult().storeResult(getClass().getName(), taintFlows);
@@ -141,11 +149,14 @@ public class TaintAnalysiss {
         for(CSCallSite csInvoke: sinkInvoke) {
             Invoke invoke = csInvoke.getCallSite();
             Context context = csInvoke.getContext();
+
             int sinkArgIndex = getSinkArgIndex(invoke.getInvokeExp().getMethodRef().resolve());
+
             CSVar csVar = csManager.getCSVar(context, invoke.getInvokeExp().getArg(sinkArgIndex));
             for(CSObj csObj: csVar.getPointsToSet()) {
-                if (csObj.getObject() instanceof MockObj mockObj) {
-                    TaintFlow taintFlow = new TaintFlow((Invoke) mockObj.getAllocation(), invoke, sinkArgIndex);
+                Obj obj = csObj.getObject();
+                if (manager.isTaint(obj)) {
+                    TaintFlow taintFlow = new TaintFlow(manager.getSourceCall(obj), invoke, sinkArgIndex);
                     taintFlows.add(taintFlow);
                 }
             }
