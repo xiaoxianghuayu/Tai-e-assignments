@@ -195,25 +195,23 @@ public class Solver {
                 handleArgAndRet(stmt, c, targetMethod, ct);
             }
 
-            // Taint: sink() and source() are both static
-            if (stmt.getInvokeExp() instanceof InvokeStatic invokeStaticStmt) {
-                JMethod currentMethod = invokeStaticStmt.getMethodRef().resolve();
-                Type retType = invokeStaticStmt.getType();
-                if (taintAnalysis.inSourceSet(currentMethod, retType)) {
-                    taintAnalysis.sourceInvoke.add(stmt);
+            // Taint: sink() and source() may not be static!
+            JMethod method = stmt.getInvokeExp().getMethodRef().resolve();
+            Type retType = stmt.getInvokeExp().getType();
+            if (taintAnalysis.inSourceSet(method, retType)) {
+                taintAnalysis.sourceInvoke.add(stmt);
 
-                    Context emptyContext = contextSelector.getEmptyContext();
-                    Obj newTaintObj = taintAnalysis.makeTaintObj(stmt, retType);
-                    CSObj newCSTaintObj = csManager.getCSObj(emptyContext, newTaintObj);
+                Context emptyContext = contextSelector.getEmptyContext();
+                Obj newTaintObj = taintAnalysis.makeTaintObj(stmt, retType);
+                CSObj newCSTaintObj = csManager.getCSObj(emptyContext, newTaintObj);
 
-                    Var left = stmt.getResult();
-                    if (left != null) {
-                        csManager.getCSVar(emptyContext, left).getPointsToSet().addObject(newCSTaintObj);
-//                        workList.addEntry(csManager.getCSVar(emptyContext, left), PointsToSetFactory.make(newCSTaintObj));
-                    }
-                } else if (taintAnalysis.getSinkArgIndex(currentMethod) != -1) {
-                    taintAnalysis.sinkInvoke.add(csManager.getCSCallSite(this.context, stmt));
+                Var left = stmt.getResult();
+                if (left != null) {
+                   // csManager.getCSVar(emptyContext, left).getPointsToSet().addObject(newCSTaintObj);
+                   workList.addEntry(csManager.getCSVar(emptyContext, left), PointsToSetFactory.make(newCSTaintObj));
                 }
+            } else if (taintAnalysis.getSinkArgIndex(method) != -1) {
+                taintAnalysis.sinkInvoke.add(stmt);
             }
 
             return StmtVisitor.super.visit(stmt);
@@ -432,6 +430,19 @@ public class Solver {
                 addReachable(targetCSMethod);
 
                 handleArgAndRet(invokeStmt, c, targetMethod, ct);
+            }
+
+            for (Var arg : invokeStmt.getInvokeExp().getArgs()) {
+                for (CSObj csObj : csManager.getCSVar(c, arg).getPointsToSet()) {
+                    if (taintAnalysis.isTaintObj(csObj.getObject())) {
+                        if (taintAnalysis.isArgToBase(targetMethod)) {
+                            workList.addEntry(recv, PointsToSetFactory.make(csObj));
+                        }
+                        if (taintAnalysis.isArgToResult(targetMethod)) {
+                            workList.addEntry(csManager.getCSVar(c, invokeStmt.getLValue()), PointsToSetFactory.make(csObj));
+                        }
+                    }
+                }
             }
         }
     }

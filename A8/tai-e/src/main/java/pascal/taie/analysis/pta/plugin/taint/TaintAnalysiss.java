@@ -33,6 +33,7 @@ import pascal.taie.analysis.pta.core.cs.element.CSObj;
 import pascal.taie.analysis.pta.core.cs.element.CSVar;
 import pascal.taie.analysis.pta.core.heap.Obj;
 import pascal.taie.analysis.pta.cs.Solver;
+import pascal.taie.ir.exp.Var;
 import pascal.taie.ir.stmt.Invoke;
 import pascal.taie.language.classes.JMethod;
 
@@ -54,7 +55,7 @@ public class TaintAnalysiss {
 
     private final Context emptyContext;
 
-    public Set<CSCallSite> sinkInvoke = new HashSet<>();
+    public Set<Invoke> sinkInvoke = new HashSet<>();
     public Set<Invoke> sourceInvoke = new HashSet<>();
 
     private final Set<JMethod> baseToResult = new HashSet<>();
@@ -142,15 +143,10 @@ public class TaintAnalysiss {
         // TODO - finish me
         // You could query pointer analysis results you need via variable result.
 
-        for(CSCallSite csInvoke: sinkInvoke) {
-            Invoke invoke = csInvoke.getCallSite();
-            Context context = csInvoke.getContext();
-
+        for(Invoke invoke: sinkInvoke) {
             int sinkArgIndex = getSinkArgIndex(invoke.getInvokeExp().getMethodRef().resolve());
-
-            CSVar csVar = csManager.getCSVar(context, invoke.getInvokeExp().getArg(sinkArgIndex));
-            for(CSObj csObj: csVar.getPointsToSet()) {
-                Obj obj = csObj.getObject();
+            Var var = invoke.getInvokeExp().getArg(sinkArgIndex);
+            for(Obj obj: result.getPointsToSet(var)) {
                 if (manager.isTaint(obj)) {
                     TaintFlow taintFlow = new TaintFlow(manager.getSourceCall(obj), invoke, sinkArgIndex);
                     taintFlows.add(taintFlow);
