@@ -27,12 +27,20 @@ import org.apache.logging.log4j.Logger;
 import pascal.taie.World;
 import pascal.taie.analysis.pta.PointerAnalysisResult;
 import pascal.taie.analysis.pta.core.cs.context.Context;
+import pascal.taie.analysis.pta.core.cs.element.CSCallSite;
 import pascal.taie.analysis.pta.core.cs.element.CSManager;
+import pascal.taie.analysis.pta.core.cs.element.CSObj;
+import pascal.taie.analysis.pta.core.cs.element.CSVar;
+import pascal.taie.analysis.pta.core.heap.MockObj;
+import pascal.taie.analysis.pta.core.heap.Obj;
 import pascal.taie.analysis.pta.cs.Solver;
+import pascal.taie.ir.exp.Var;
+import pascal.taie.ir.stmt.Invoke;
+import pascal.taie.language.classes.JMethod;
 
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeSet;
+import pascal.taie.language.type.Type;
+
+import java.util.*;
 
 public class TaintAnalysiss {
 
@@ -48,6 +56,13 @@ public class TaintAnalysiss {
 
     private final Context emptyContext;
 
+    public static Set<Sink> sinkSet;
+    public static Set<Source> sourceSet;
+    public static Set<TaintTransfer> taintTransferSet;
+
+    public Set<CSCallSite> sinkInvoke = new HashSet<>();
+    public Set<Invoke> sourceInvoke = new HashSet<>();
+
     public TaintAnalysiss(Solver solver) {
         manager = new TaintManager();
         this.solver = solver;
@@ -58,9 +73,59 @@ public class TaintAnalysiss {
                 World.get().getClassHierarchy(),
                 World.get().getTypeSystem());
         logger.info(config);
+
+
+        sinkSet = config.getSinks();
+        sourceSet = config.getSources();
+        taintTransferSet = config.getTransfers();
     }
 
-    // TODO - finish me
+    // TODO - finish
+    public boolean inTaintTransfer(JMethod method, int from, int to, Type type) {
+        return taintTransferSet.contains(new TaintTransfer(method, from, to, type));
+    }
+
+    public int getTaintTransferBaseToResultArgIndex(JMethod method, Type type) {
+        return inTaintTransfer(method, -1, -2, type) ? 1 : -1;      // base to result do not need arg, 1 represent "in" and -1 represents "not in"
+    }
+    public int getTaintTransferArgToBaseArgIndex(JMethod method, Type type) {
+        for (int i = 0; i < method.getParamCount(); i++) {
+            if (inTaintTransfer(method, i, -1, type)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    public int getTaintTransferArgToResultArgIndex(JMethod method, Type type) {
+        for (int i = 0; i < method.getParamCount(); i++) {
+            if (inTaintTransfer(method, i, -2, type)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    public boolean inSourceSet(JMethod method, Type type) {
+        return sourceSet.contains(new Source(method, type));
+    }
+
+    public boolean inSinkSet(JMethod method, int index) {
+        return sinkSet.contains(new Sink(method, index));
+    }
+
+    public int getSinkArgIndex(JMethod method) {
+        for (int i = 0; i < method.getParamCount(); i++) {
+            if (inSinkSet(method, i)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    public Obj makeTaintObj(Invoke source, Type type) {
+        return manager.makeTaint(source, type);
+    }
 
     public void onFinish() {
         Set<TaintFlow> taintFlows = collectTaintFlows();
@@ -72,6 +137,20 @@ public class TaintAnalysiss {
         PointerAnalysisResult result = solver.getResult();
         // TODO - finish me
         // You could query pointer analysis results you need via variable result.
+
+        for(CSCallSite csInvoke: sinkInvoke) {
+            Invoke invoke = csInvoke.getCallSite();
+            Context context = csInvoke.getContext();
+            int sinkArgIndex = getSinkArgIndex(invoke.getInvokeExp().getMethodRef().resolve());
+            CSVar csVar = csManager.getCSVar(context, invoke.getInvokeExp().getArg(sinkArgIndex));
+            for(CSObj csObj: csVar.getPointsToSet()) {
+                if (csObj.getObject() instanceof MockObj mockObj) {
+                    TaintFlow taintFlow = new TaintFlow((Invoke) mockObj.getAllocation(), invoke, sinkArgIndex);
+                    taintFlows.add(taintFlow);
+                }
+            }
+        }
+
         return taintFlows;
     }
 }
