@@ -31,10 +31,8 @@ import pascal.taie.analysis.pta.core.cs.element.CSCallSite;
 import pascal.taie.analysis.pta.core.cs.element.CSManager;
 import pascal.taie.analysis.pta.core.cs.element.CSObj;
 import pascal.taie.analysis.pta.core.cs.element.CSVar;
-import pascal.taie.analysis.pta.core.heap.MockObj;
 import pascal.taie.analysis.pta.core.heap.Obj;
 import pascal.taie.analysis.pta.cs.Solver;
-import pascal.taie.ir.exp.Var;
 import pascal.taie.ir.stmt.Invoke;
 import pascal.taie.language.classes.JMethod;
 
@@ -56,12 +54,13 @@ public class TaintAnalysiss {
 
     private final Context emptyContext;
 
-    public static Set<Sink> sinkSet;
-    public static Set<Source> sourceSet;
-    public static Set<TaintTransfer> taintTransferSet;
-
     public Set<CSCallSite> sinkInvoke = new HashSet<>();
     public Set<Invoke> sourceInvoke = new HashSet<>();
+
+    private final Set<JMethod> baseToResult = new HashSet<>();
+    private final Set<JMethod> argToBase = new HashSet<>();
+    private final Set<JMethod> argToResult = new HashSet<>();
+
 
     public TaintAnalysiss(Solver solver) {
         manager = new TaintManager();
@@ -75,43 +74,44 @@ public class TaintAnalysiss {
         logger.info(config);
 
 
-        sinkSet = config.getSinks();
-        sourceSet = config.getSources();
-        taintTransferSet = config.getTransfers();
+        loadTransferFunctions();
     }
 
     // TODO - finish
-    public boolean inTaintTransfer(JMethod method, int from, int to, Type type) {
-        return taintTransferSet.contains(new TaintTransfer(method, from, to, type));
-    }
+    private void loadTransferFunctions() {
+        for(TaintTransfer taintTransfer: config.getTransfers()) {
+            JMethod method = taintTransfer.method();
+            int from = taintTransfer.from();
+            int to = taintTransfer.to();
 
-    public int getTaintTransferBaseToResultArgIndex(JMethod method, Type type) {
-        return inTaintTransfer(method, -1, -2, type) ? 1 : -1;      // base to result do not need arg, 1 represent "in" and -1 represents "not in"
-    }
-    public int getTaintTransferArgToBaseArgIndex(JMethod method, Type type) {
-        for (int i = 0; i < method.getParamCount(); i++) {
-            if (inTaintTransfer(method, i, -1, type)) {
-                return i;
+            // base: -1, result: -2
+            if (from == -1 && to == -2) {
+                baseToResult.add(method);
+            } else if (from >= 0 && to == -2) {
+                argToResult.add(method);
+            } else if (from >= 0 && to == -1) {
+                argToBase.add(method);
             }
         }
-        return -1;
     }
 
-    public int getTaintTransferArgToResultArgIndex(JMethod method, Type type) {
-        for (int i = 0; i < method.getParamCount(); i++) {
-            if (inTaintTransfer(method, i, -2, type)) {
-                return i;
-            }
-        }
-        return -1;
+    public boolean isBaseToResult(JMethod method) {
+        return baseToResult.contains(method);
+    }
+
+    public boolean isArgToResult(JMethod method) {
+        return argToResult.contains(method);
+    }
+    public boolean isArgToBase(JMethod method) {
+        return argToBase.contains(method);
     }
 
     public boolean inSourceSet(JMethod method, Type type) {
-        return sourceSet.contains(new Source(method, type));
+        return config.getSources().contains(new Source(method, type));
     }
 
     public boolean inSinkSet(JMethod method, int index) {
-        return sinkSet.contains(new Sink(method, index));
+        return config.getSinks().contains(new Sink(method, index));
     }
 
     public int getSinkArgIndex(JMethod method) {
@@ -129,10 +129,6 @@ public class TaintAnalysiss {
 
     public boolean isTaintObj(Obj obj) {
         return manager.isTaint(obj);
-    }
-
-    public Invoke getTaintSourceCall(Obj obj) {
-        return manager.getSourceCall(obj);
     }
 
     public void onFinish() {
