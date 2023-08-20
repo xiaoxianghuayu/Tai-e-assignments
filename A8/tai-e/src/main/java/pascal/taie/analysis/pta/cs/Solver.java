@@ -201,14 +201,13 @@ public class Solver {
             if (taintAnalysis.inSourceSet(method, retType)) {
                 taintAnalysis.sourceInvoke.add(stmt);
 
-                Context emptyContext = contextSelector.getEmptyContext();
-                Obj newTaintObj = taintAnalysis.makeTaintObj(stmt, retType);
-                CSObj newCSTaintObj = csManager.getCSObj(emptyContext, newTaintObj);
+                Obj taintObj = taintAnalysis.makeTaintObj(stmt, retType);
+                CSObj csTaintObj = csManager.getCSObj(contextSelector.getEmptyContext(), taintObj);
 
                 Var left = stmt.getResult();
                 if (left != null) {
-                   // csManager.getCSVar(emptyContext, left).getPointsToSet().addObject(newCSTaintObj);
-                   workList.addEntry(csManager.getCSVar(emptyContext, left), PointsToSetFactory.make(newCSTaintObj));
+                   workList.addEntry(csManager.getCSVar(context, left), PointsToSetFactory.make(csTaintObj));
+                    // csManager.getCSVar(context, left).getPointsToSet().addObject(csTaintObj);
                 }
             } else if (taintAnalysis.getSinkArgIndex(method) != -1) {
                 taintAnalysis.sinkInvoke.add(stmt);
@@ -432,18 +431,18 @@ public class Solver {
                 handleArgAndRet(invokeStmt, c, targetMethod, ct);
             }
 
-            for (Var arg : invokeStmt.getInvokeExp().getArgs()) {
-                for (CSObj csObj : csManager.getCSVar(c, arg).getPointsToSet()) {
-                    if (taintAnalysis.isTaintObj(csObj.getObject())) {
-                        if (taintAnalysis.isArgToBase(targetMethod)) {
-                            workList.addEntry(recv, PointsToSetFactory.make(csObj));
-                        }
-                        if (taintAnalysis.isArgToResult(targetMethod)) {
-                            workList.addEntry(csManager.getCSVar(c, invokeStmt.getLValue()), PointsToSetFactory.make(csObj));
-                        }
-                    }
-                }
-            }
+//            for (Var arg : invokeStmt.getInvokeExp().getArgs()) {
+//                for (CSObj csObj : csManager.getCSVar(c, arg).getPointsToSet()) {
+//                    if (taintAnalysis.isTaintObj(csObj.getObject())) {
+//                        if (taintAnalysis.isArgToBase(targetMethod)) {
+//                            workList.addEntry(recv, PointsToSetFactory.make(csObj));
+//                        }
+//                        if (taintAnalysis.isArgToResult(targetMethod)) {
+//                            workList.addEntry(csManager.getCSVar(c, invokeStmt.getLValue()), PointsToSetFactory.make(csObj));
+//                        }
+//                    }
+//                }
+//            }
         }
     }
 
